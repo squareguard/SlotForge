@@ -1,0 +1,14 @@
+{
+  "name": "slotforge",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev:ui": "npm run dev --prefix frontend",
+    "build:ui": "npm run build --prefix frontend",
+    "tauri:dev": "node scripts/run-tauri.mjs dev",
+    "tauri:build": "node scripts/run-tauri.mjs build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.5.0"
+  }
+}

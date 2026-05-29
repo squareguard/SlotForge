@@ -2,7 +2,7 @@
 
 SlotForge is a cross-platform desktop application for managing PC game save files. It discovers games and save directories, backs up saves to a central vault, annotates them with labels and notes, and supports safe hot-swapping between vault and active game folders—with conflict detection, rollback, and integrity verification.
 
-**Status:** The MVP backend and service layer are implemented in Rust. The **React frontend** in `frontend/` is implemented and covers the full save-manager UX (library, vault, backup/restore, conflict handling, integrity checks, theme editor). It runs against an in-memory **mock API** aligned with the Rust domain types; wiring to the Rust binary (e.g. Tauri or another IPC layer) is not connected yet.
+**Status:** The MVP backend and service layer are implemented in Rust. The **React + Tauri desktop app** connects the UI to real filesystem operations via Tauri IPC commands — no mock API or seed data. The Rust CLI (`cargo run`) remains available for headless diagnostics.
 
 ## Features
 
@@ -38,10 +38,11 @@ SlotForge is a cross-platform desktop application for managing PC game save file
 | Styling | [Tailwind CSS](https://tailwindcss.com/) 3, [PostCSS](https://postcss.org/), [Autoprefixer](https://github.com/postcss/autoprefixer) |
 | Icons | [lucide-react](https://lucide.dev/) |
 | Language | JavaScript (JSX), JSDoc types aligned with Rust domain models |
-| Dev server | Port **8000** (`strictPort` in `vite.config.js`) |
-| Custom tooling | `vite-folder-picker-plugin.js` — dev-only folder picker and save-file scan API (Windows native dialog; mirrors Rust discovery extensions) |
+| Desktop shell | [Tauri](https://tauri.app/) 2 (`@tauri-apps/api`, `tauri-plugin-dialog`) |
+| IPC | Tauri commands in `src-tauri/` → `slotforge::api` facade → services |
+| Dev server | Port **8000** (embedded in Tauri dev via `tauri dev`) |
 
-The UI is a single self-contained module (`frontend/src/SlotForgeApp.jsx`) with custom components only (no MUI, Chakra, or shadcn). State lives in React (`useReducer` / hooks); there is no `localStorage` or `sessionStorage`.
+The UI is a single self-contained module (`frontend/src/SlotForgeApp.jsx`) with custom components only (no MUI, Chakra, or shadcn). State lives in React (`useReducer` / hooks); there is no `localStorage` or `sessionStorage`. Backend calls go through `frontend/src/api/slotforgeApi.js`.
 
 ### CI
 
@@ -51,9 +52,9 @@ The UI is a single self-contained module (`frontend/src/SlotForgeApp.jsx`) with 
 
 ## Requirements
 
-- **Rust toolchain:** stable (1.70+ recommended). Install from [rustup.rs](https://rustup.rs/).
-- **Node.js:** 18+ and npm (for the frontend dev server and production build).
-- **Platforms:** Windows, Linux, macOS (paths and defaults are OS-aware). The dev folder-picker plugin uses a native Windows dialog; on other OSes, path entry still works in the UI.
+- **Rust toolchain:** stable (1.70+ recommended). Install from [rustup.rs](https://rustup.rs/), then **open a new terminal** so `cargo` is on your `PATH`. The `tauri:dev` scripts add `~/.cargo/bin` automatically, but Rust must be installed first.
+- **Node.js:** 18+ and npm (for the frontend and Tauri tooling).
+- **Platforms:** Windows, Linux, macOS (paths and defaults are OS-aware).
 
 ## Build
 
@@ -71,18 +72,40 @@ cargo build --release
 
 The executable is `target/release/slotforge` (or `slotforge.exe` on Windows).
 
-## Frontend
+## Desktop app (recommended)
 
-The React app implements the full save-manager workflow against a **`mockApi`** layer whose shapes match the Rust domain (`GameRecord`, `SaveRecord`, `ConflictComparison`, etc.). Seed data includes five demo games with vault snapshots, conflict scenarios, and integrity states.
+Run SlotForge as a native desktop window with the React UI wired to the Rust backend.
 
-**Implemented UI areas:**
+From the repository root (recommended):
 
-- **Library** — game sidebar with search, scan, and add-game flow (folder picker in dev on Windows)
-- **Vault** — snapshot cards, sort/filter, detail panel, backup modal, annotations, delete with confirmation
-- **Operations** — restore with conflict diff, rollback, per-snapshot and batch verify, progress and status bar
-- **Settings** — theme editor with five presets, live preview, export/import JSON, scanline and glow toggles
+```bash
+npm install
+npm run tauri:dev
+```
 
-### Run the dev server
+Or from `frontend/` (delegates to the repo root):
+
+```bash
+cd frontend
+npm install
+npm run tauri:dev
+```
+
+This starts the Vite dev server and opens the Tauri shell. All library, vault, backup, restore, verify, and delete actions use real files on disk.
+
+Production desktop build:
+
+```bash
+npm run tauri:build
+```
+
+(from repo root, or `npm run tauri:build` from `frontend/`)
+
+Installers/binaries are written under `src-tauri/target/release/bundle/`.
+
+## Frontend (web assets only)
+
+The React app is bundled into the Tauri shell. For UI-only development without the desktop window:
 
 ```bash
 cd frontend
@@ -90,24 +113,16 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:8000](http://localhost:8000).
+Open [http://localhost:8000](http://localhost:8000). **Note:** Tauri IPC commands are unavailable in the browser-only dev server; use `npm run tauri:dev` for full functionality.
 
-### Production build
+### Production static build
 
 ```bash
 cd frontend
 npm run build
 ```
 
-Output is written to `frontend/dist/`. Preview the production bundle locally:
-
-```bash
-npm run preview
-```
-
-### Environment
-
-Optional: create `frontend/.env` and set `VITE_SLOTFORGE_MOCK_FAIL_RATE=0` to disable random simulated failures on mutating mock API calls during demos.
+Output is written to `frontend/dist/`. Preview locally with `npm run preview`.
 
 ## Run locally (Rust CLI)
 
@@ -196,13 +211,19 @@ src/
 frontend/
   index.html           # HTML shell
   vite.config.js       # Vite + React plugin, port 8000
-  vite-folder-picker-plugin.js  # Dev folder picker / save scan API
   src/
     main.jsx           # React entry point
-    SlotForgeApp.jsx   # Full UI, mockApi, seed data, components
+    SlotForgeApp.jsx   # Full UI and components
+    api/slotforgeApi.js # Tauri IPC client (invoke commands)
     index.css          # Global styles, theme tokens, animations
   tailwind.config.js
   postcss.config.js
+src-tauri/
+  tauri.conf.json      # Tauri desktop config
+  src/lib.rs           # Tauri command handlers
+  capabilities/        # Tauri ACL permissions
+  icons/               # App icons
+src/api/               # Rust API facade for the UI (DTOs + commands)
 tests/fixtures/        # Cross-platform test fixture conventions
 .github/workflows/     # CI test matrix (Rust)
 ```
@@ -213,11 +234,17 @@ tests/fixtures/        # Cross-platform test fixture conventions
 flowchart LR
   subgraph React["React frontend (frontend/)"]
     App[SlotForgeApp.jsx]
-    Mock[mockApi]
-    App --> Mock
+    Api[slotforgeApi.js]
+    App --> Api
   end
 
-  subgraph RustUI["Rust ui modules (src/ui/)"]
+  subgraph Tauri["Tauri shell (src-tauri/)"]
+    Cmd[Tauri commands]
+    Api -->|invoke| Cmd
+    Cmd --> Facade[slotforge::api]
+  end
+
+  subgraph RustUI["Rust ui modules (src/ui/) — CLI only"]
     Library[library_screen]
     Vault[vault_screen]
     Settings[settings_screen]
@@ -241,7 +268,7 @@ flowchart LR
     Conflict[ConflictComparison]
   end
 
-  Mock -.->|planned IPC| Services
+  Facade --> Services
   Library --> Discovery
   Library --> LibrarySvc
   Vault --> VaultSvc

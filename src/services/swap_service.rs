@@ -250,6 +250,11 @@ fn stage_existing_active_save(game: &GameRecord, active_path: &Path) -> Result<P
     Ok(staged_path)
 }
 
+/// Undo a successful swap by restoring the staged active save (if any) and removing the restored file.
+pub fn rollback_user_swap(active_destination_path: &Path, staged_backup_path: Option<&Path>) -> Result<()> {
+    rollback_swap_failure(active_destination_path, staged_backup_path)
+}
+
 fn rollback_swap_failure(active_destination_path: &Path, staged_backup_path: Option<&Path>) -> Result<()> {
     if active_destination_path.exists() && active_destination_path.is_file() {
         fs::remove_file(active_destination_path).with_context(|| {

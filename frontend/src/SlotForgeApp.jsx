@@ -1,5 +1,5 @@
 // ============================================================================
-// MOCK DATA TYPES — aligned with SlotForge Rust domain (src/domain/*.rs)
+// DOMAIN TYPES — aligned with SlotForge Rust domain (src/domain/*.rs)
 // ============================================================================
 
 import {
@@ -12,6 +12,11 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  pickSaveDirectory,
+  scanSaveDirectory,
+  slotforgeApi,
+} from "./api/slotforgeApi.js";
 import {
   ChevronLeft,
   ChevronRight,
@@ -167,6 +172,9 @@ export const ResolutionChoice = {
   CancelOperation: "CancelOperation",
 };
 
+/** Label colour swatches for snapshot tags (vault filter + colour picker). */
+const LABEL_COLORS = ["#00f5ff", "#ffb800", "#a855f7", "#22c55e", "#ff2d55", "#f472b6"];
+
 const GAME_SOURCES = new Set(Object.values(GameSource));
 const SAVE_ORIGINS = new Set(Object.values(SaveOrigin));
 const INTEGRITY_STATUSES = new Set(Object.values(IntegrityStatus));
@@ -262,966 +270,6 @@ export function isValidOperationLog(entry) {
   );
 }
 
-// ============================================================================
-// SEED DATA
-// ============================================================================
-
-const LABEL_COLORS = ["#00f5ff", "#ffb800", "#a855f7", "#22c55e", "#ff2d55", "#f472b6"];
-
-const CYBERPUNK_CONFLICT_ID = "game-cyberpunk";
-
-/** Pre-seeded conflict rows for restore modal demo (task 2.3). */
-const CYBERPUNK_CONFLICT_FILES = [
-  {
-    path: "cp2077.sav",
-    freshness: SaveFreshness.DestinationNewer,
-    activeSnippet: "ACTIVE  v2.1  modified 2026-05-29T08:14:02Z  hash=cp_active_a91f",
-    snapshotSnippet: "VAULT   v2.0  modified 2026-05-27T19:02:11Z  hash=cp_vault_b42c",
-  },
-  {
-    path: "settings.json",
-    freshness: SaveFreshness.SourceNewer,
-    activeSnippet: 'ACTIVE  {"resolution":"2560x1440","dlss":"quality"}',
-    snapshotSnippet: 'VAULT   {"resolution":"1920x1080","dlss":"balanced"}',
-  },
-];
-
-/**
- * Simulated failure rate for mutating mock API calls (task 2.5).
- * Override with `VITE_SLOTFORGE_MOCK_FAIL_RATE`:
- * - `0` disables failures
- * - `0.05` = 5% (default)
- */
-const DEFAULT_MUTATION_FAIL_RATE = 0.05;
-const MUTATION_FAIL_RATE = (() => {
-  const raw = import.meta?.env?.VITE_SLOTFORGE_MOCK_FAIL_RATE;
-  if (raw == null || raw === "") return DEFAULT_MUTATION_FAIL_RATE;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_MUTATION_FAIL_RATE;
-  return Math.min(parsed, 1);
-})();
-
-/** @param {number} days */
-function isoDaysAgo(days) {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString();
-}
-
-/**
- * @param {Object} params
- * @param {number} params.daysAgo
- * @param {number} params.byteSize
- * @param {string} params.sha256
- * @returns {SaveMetadata}
- */
-function makeMetadata({ daysAgo, byteSize, sha256 }) {
-  const modifiedAt = isoDaysAgo(daysAgo);
-  return {
-    modifiedAt,
-    createdAt: isoDaysAgo(daysAgo + 2),
-    byteSize,
-    sha256,
-  };
-}
-
-/**
- * @param {Object} params
- * @returns {Snapshot}
- */
-function makeSnapshot({
-  id,
-  gameId,
-  gameName,
-  fileName,
-  daysAgo,
-  label,
-  note,
-  integrity,
-  labelColor,
-  fileCount,
-  files,
-  byteSize,
-  sha256,
-  origin = SaveOrigin.Vault,
-  absolutePath: absolutePathOverride,
-}) {
-  const vaultPath = `C:/Users/Player/Documents/SlotForge/Vault/${gameName}/${fileName}`;
-  return {
-    id,
-    gameId,
-    fileName,
-    absolutePath: absolutePathOverride ?? vaultPath,
-    origin,
-    label,
-    note,
-    metadata: makeMetadata({ daysAgo, byteSize, sha256 }),
-    archivedAt: origin === SaveOrigin.Vault ? isoDaysAgo(daysAgo) : null,
-    integrity,
-    labelColor,
-    fileCount,
-    files,
-  };
-}
-
-/**
- * @param {Object} params
- * @returns {Game}
- */
-function makeGame({
-  id,
-  name,
-  activeSaveDir,
-  source,
-  tags,
-  daysAgo,
-  lastBackupDaysAgo,
-}) {
-  const createdAt = isoDaysAgo(daysAgo + 30);
-  return {
-    id,
-    name,
-    gameRoot: activeSaveDir.replace(/\\Save(s)?$/i, ""),
-    activeSaveDir,
-    source,
-    tags,
-    createdAt,
-    updatedAt: isoDaysAgo(daysAgo),
-    lastBackedUpAt: lastBackupDaysAgo != null ? isoDaysAgo(lastBackupDaysAgo) : null,
-    hasConflict: false,
-    conflictFiles: [],
-  };
-}
-
-/**
- * Initial in-memory library + vault snapshots for Phase 1 mock UI.
- * @returns {{ games: Game[], vaultByGameId: Record<string, Snapshot[]> }}
- */
-export function createSeedData() {
-  const games = [
-    makeGame({
-      id: "game-elden-ring",
-      name: "Elden Ring",
-      activeSaveDir: "C:/Users/Player/AppData/EldenRing/Saves",
-      source: GameSource.AutoDiscovered,
-      tags: ["soulslike", "rpg"],
-      daysAgo: 1,
-      lastBackupDaysAgo: 2,
-    }),
-    makeGame({
-      id: "game-cyberpunk",
-      name: "Cyberpunk 2077",
-      activeSaveDir: "C:/Users/Player/Saved Games/CD Projekt Red/Cyberpunk 2077",
-      source: GameSource.AutoDiscovered,
-      tags: ["rpg", "open-world"],
-      daysAgo: 0,
-      lastBackupDaysAgo: 1,
-    }),
-    makeGame({
-      id: "game-hollow-knight",
-      name: "Hollow Knight",
-      activeSaveDir: "C:/Users/Player/AppData/Local/HollowKnight/Saves",
-      source: GameSource.AutoDiscovered,
-      tags: ["metroidvania"],
-      daysAgo: 3,
-      lastBackupDaysAgo: 5,
-    }),
-    makeGame({
-      id: "game-rimworld",
-      name: "RimWorld",
-      activeSaveDir: "C:/Users/Player/AppData/LocalLow/Ludeon/RimWorld/Saves",
-      source: GameSource.UserAdded,
-      tags: ["colony-sim"],
-      daysAgo: 2,
-      lastBackupDaysAgo: 3,
-    }),
-    makeGame({
-      id: "game-hades",
-      name: "Hades",
-      activeSaveDir: "C:/Users/Player/Documents/Saved Games/Hades",
-      source: GameSource.AutoDiscovered,
-      tags: ["roguelike"],
-      daysAgo: 4,
-      lastBackupDaysAgo: 4,
-    }),
-  ];
-
-  /** @type {Record<string, Snapshot[]>} */
-  const vaultByGameId = {
-    "game-elden-ring": [
-      makeSnapshot({
-        id: "snap-er-1",
-        gameId: "game-elden-ring",
-        gameName: "Elden Ring",
-        fileName: "ER0000.sl2",
-        daysAgo: 2,
-        label: "Pre-DLC baseline",
-        note: "Clean start before Shadow of the Erdtree.",
-        integrity: IntegrityStatus.Verified,
-        labelColor: LABEL_COLORS[0],
-        fileCount: 2,
-        files: ["ER0000.sl2", "steam_autocloud.vdf"],
-        byteSize: 4_821_440,
-        sha256: "a1elden0001",
-      }),
-      makeSnapshot({
-        id: "snap-er-2",
-        gameId: "game-elden-ring",
-        gameName: "Elden Ring",
-        fileName: "ER0001.sl2",
-        daysAgo: 5,
-        label: "Margit down",
-        note: "Stormveil entrance reached.",
-        integrity: IntegrityStatus.Verified,
-        labelColor: LABEL_COLORS[2],
-        fileCount: 2,
-        files: ["ER0001.sl2", "steam_autocloud.vdf"],
-        byteSize: 4_902_112,
-        sha256: "a1elden0002",
-      }),
-      makeSnapshot({
-        id: "snap-er-3",
-        gameId: "game-elden-ring",
-        gameName: "Elden Ring",
-        fileName: "ER0002.sl2",
-        daysAgo: 9,
-        label: "Legacy dungeon",
-        note: null,
-        integrity: IntegrityStatus.Unchecked,
-        labelColor: LABEL_COLORS[4],
-        fileCount: 1,
-        files: ["ER0002.sl2"],
-        byteSize: 4_755_200,
-        sha256: null,
-      }),
-      makeSnapshot({
-        id: "snap-er-4",
-        gameId: "game-elden-ring",
-        gameName: "Elden Ring",
-        fileName: "ER0003.sl2",
-        daysAgo: 14,
-        label: "Experiment branch",
-        note: "Arcane build test — may delete later.",
-        integrity: IntegrityStatus.Corrupted,
-        labelColor: LABEL_COLORS[3],
-        fileCount: 3,
-        files: ["ER0003.sl2", "ER0003.bak", "graphics.cfg"],
-        byteSize: 4_999_001,
-        sha256: "badhash_er03",
-      }),
-    ],
-    "game-cyberpunk": [
-      makeSnapshot({
-        id: "snap-cp-1",
-        gameId: "game-cyberpunk",
-        gameName: "Cyberpunk 2077",
-        fileName: "ManualSave-42.sav",
-        daysAgo: 1,
-        label: "Act 2 checkpoint",
-        note: "Before meeting Hanako at Embers.",
-        integrity: IntegrityStatus.Verified,
-        labelColor: LABEL_COLORS[0],
-        fileCount: 4,
-        files: ["ManualSave-42.sav", "cp2077.sav", "settings.json", "metadata.dat"],
-        byteSize: 12_440_320,
-        sha256: "cp77hash0042",
-      }),
-      makeSnapshot({
-        id: "snap-cp-2",
-        gameId: "game-cyberpunk",
-        gameName: "Cyberpunk 2077",
-        fileName: "AutoSave-9.sav",
-        daysAgo: 3,
-        label: "Street kid route",
-        note: "Nomad lifepath autosave.",
-        integrity: IntegrityStatus.Verified,
-        labelColor: LABEL_COLORS[1],
-        fileCount: 3,
-        files: ["AutoSave-9.sav", "cp2077.sav", "settings.json"],
-        byteSize: 11_902_144,
-        sha256: "cp77hash0009",
-      }),
-      makeSnapshot({
-        id: "snap-cp-3",
-        gameId: "game-cyberpunk",
-        gameName: "Cyberpunk 2077",
-        fileName: "QuickSave-3.sav",
-        daysAgo: 6,
-        label: "Quick test",
-        note: null,
-        integrity: IntegrityStatus.Unchecked,
-        labelColor: LABEL_COLORS[5],
-        fileCount: 2,
-        files: ["QuickSave-3.sav", "cp2077.sav"],
-        byteSize: 11_500_000,
-        sha256: null,
-      }),
-      makeSnapshot({
-        id: "snap-cp-4",
-        gameId: "game-cyberpunk",
-        gameName: "Cyberpunk 2077",
-        fileName: "ManualSave-12.sav",
-        daysAgo: 10,
-        label: "Corpo intro",
-        note: "Early corpo lifepath backup.",
-        integrity: IntegrityStatus.Corrupted,
-        labelColor: LABEL_COLORS[4],
-        fileCount: 4,
-        files: ["ManualSave-12.sav", "cp2077.sav", "settings.json", "cache.bin"],
-        byteSize: 10_880_512,
-        sha256: "cp77corrupt12",
-      }),
-      makeSnapshot({
-        id: "snap-cp-5",
-        gameId: "game-cyberpunk",
-        gameName: "Cyberpunk 2077",
-        fileName: "ManualSave-7.sav",
-        daysAgo: 18,
-        label: "NG+ planning",
-        note: "Keep for second playthrough compare.",
-        integrity: IntegrityStatus.Verified,
-        labelColor: LABEL_COLORS[2],
-        fileCount: 3,
-        files: ["ManualSave-7.sav", "cp2077.sav", "settings.json"],
-        byteSize: 11_200_384,
-        sha256: "cp77hash0007",
-      }),
-    ],
-    "game-hollow-knight": [
-      makeSnapshot({
-        id: "snap-hk-1",
-        gameId: "game-hollow-knight",
-        gameName: "Hollow Knight",
-        fileName: "user1.dat",
-        daysAgo: 5,
-        label: "100% charms",
-        note: "All charms acquired, not all upgrades.",
-        integrity: IntegrityStatus.Verified,
-        labelColor: LABEL_COLORS[0],
-        fileCount: 1,
-        files: ["user1.dat"],
-        byteSize: 512_000,
-        sha256: "hkhash0001",
-      }),
-      makeSnapshot({
-        id: "snap-hk-2",
-        gameId: "game-hollow-knight",
-        gameName: "Hollow Knight",
-        fileName: "user2.dat",
-        daysAgo: 12,
-        label: "White Palace",
-        note: "Stuck on Path of Pain.",
-        integrity: IntegrityStatus.Unchecked,
-        labelColor: LABEL_COLORS[1],
-        fileCount: 1,
-        files: ["user2.dat"],
-        byteSize: 498_240,
-        sha256: null,
-      }),
-      makeSnapshot({
-        id: "snap-hk-3",
-        gameId: "game-hollow-knight",
-        gameName: "Hollow Knight",
-        fileName: "user3.dat",
-        daysAgo: 20,
-        label: "Steel soul",
-        note: "Run ended in Deepnest.",
-        integrity: IntegrityStatus.Corrupted,
-        labelColor: LABEL_COLORS[4],
-        fileCount: 2,
-        files: ["user3.dat", "user3.bak"],
-        byteSize: 505_120,
-        sha256: "hkcorrupt003",
-      }),
-    ],
-    "game-rimworld": [
-      makeSnapshot({
-        id: "snap-rw-1",
-        gameId: "game-rimworld",
-        gameName: "RimWorld",
-        fileName: "ColonyAlpha.rws",
-        daysAgo: 3,
-        label: "Year 4 summer",
-        note: "Stable colony, psychic ship incoming.",
-        integrity: IntegrityStatus.Verified,
-        labelColor: LABEL_COLORS[2],
-        fileCount: 5,
-        files: ["ColonyAlpha.rws", "Ideo.dat", "World.dat", "Prefs.xml", "ModList.xml"],
-        byteSize: 8_420_000,
-        sha256: "rwhash0001",
-      }),
-      makeSnapshot({
-        id: "snap-rw-2",
-        gameId: "game-rimworld",
-        gameName: "RimWorld",
-        fileName: "ColonyBeta.rws",
-        daysAgo: 7,
-        label: "Crash recovery",
-        note: "Recovered after raid wipe.",
-        integrity: IntegrityStatus.Corrupted,
-        labelColor: LABEL_COLORS[4],
-        fileCount: 4,
-        files: ["ColonyBeta.rws", "Ideo.dat", "World.dat", "Prefs.xml"],
-        byteSize: 7_900_128,
-        sha256: "rwcorrupt002",
-      }),
-      makeSnapshot({
-        id: "snap-rw-3",
-        gameId: "game-rimworld",
-        gameName: "RimWorld",
-        fileName: "TribalStart.rws",
-        daysAgo: 11,
-        label: "Tribal naked brutality",
-        note: null,
-        integrity: IntegrityStatus.Verified,
-        labelColor: LABEL_COLORS[0],
-        fileCount: 3,
-        files: ["TribalStart.rws", "World.dat", "Prefs.xml"],
-        byteSize: 6_200_512,
-        sha256: "rwhash0003",
-      }),
-      makeSnapshot({
-        id: "snap-rw-4",
-        gameId: "game-rimworld",
-        gameName: "RimWorld",
-        fileName: "IceSheet.rws",
-        daysAgo: 16,
-        label: "Ice sheet run",
-        note: "Cannibalism accepted.",
-        integrity: IntegrityStatus.Unchecked,
-        labelColor: LABEL_COLORS[1],
-        fileCount: 4,
-        files: ["IceSheet.rws", "Ideo.dat", "World.dat", "Prefs.xml"],
-        byteSize: 7_100_000,
-        sha256: null,
-      }),
-      makeSnapshot({
-        id: "snap-rw-5",
-        gameId: "game-rimworld",
-        gameName: "RimWorld",
-        fileName: "RoyaltyTest.rws",
-        daysAgo: 22,
-        label: "Royalty DLC test",
-        note: "Mechanitor focus.",
-        integrity: IntegrityStatus.Verified,
-        labelColor: LABEL_COLORS[5],
-        fileCount: 5,
-        files: ["RoyaltyTest.rws", "Ideo.dat", "World.dat", "Prefs.xml", "ModList.xml"],
-        byteSize: 8_100_256,
-        sha256: "rwhash0005",
-      }),
-      makeSnapshot({
-        id: "snap-rw-6",
-        gameId: "game-rimworld",
-        gameName: "RimWorld",
-        fileName: "Archotech.rws",
-        daysAgo: 28,
-        label: "Archotech ending prep",
-        note: "Ship reactor blueprint researched.",
-        integrity: IntegrityStatus.Verified,
-        labelColor: LABEL_COLORS[3],
-        fileCount: 5,
-        files: ["Archotech.rws", "Ideo.dat", "World.dat", "Prefs.xml", "ModList.xml"],
-        byteSize: 8_550_000,
-        sha256: "rwhash0006",
-      }),
-    ],
-    "game-hades": [
-      makeSnapshot({
-        id: "snap-ha-1",
-        gameId: "game-hades",
-        gameName: "Hades",
-        fileName: "profile1.sav",
-        daysAgo: 4,
-        label: "True ending",
-        note: "All weapons unlocked.",
-        integrity: IntegrityStatus.Verified,
-        labelColor: LABEL_COLORS[0],
-        fileCount: 2,
-        files: ["profile1.sav", "settings.sav"],
-        byteSize: 1_240_000,
-        sha256: "hadeshash01",
-      }),
-      makeSnapshot({
-        id: "snap-ha-2",
-        gameId: "game-hades",
-        gameName: "Hades",
-        fileName: "profile1_run12.sav",
-        daysAgo: 8,
-        label: "Heat 32 attempt",
-        note: "Dad fight reached.",
-        integrity: IntegrityStatus.Verified,
-        labelColor: LABEL_COLORS[1],
-        fileCount: 2,
-        files: ["profile1_run12.sav", "settings.sav"],
-        byteSize: 980_400,
-        sha256: "hadeshash02",
-      }),
-      makeSnapshot({
-        id: "snap-ha-3",
-        gameId: "game-hades",
-        gameName: "Hades",
-        fileName: "profile1_run3.sav",
-        daysAgo: 15,
-        label: "Early escape",
-        note: null,
-        integrity: IntegrityStatus.Unchecked,
-        labelColor: LABEL_COLORS[2],
-        fileCount: 1,
-        files: ["profile1_run3.sav"],
-        byteSize: 720_128,
-        sha256: null,
-      }),
-      makeSnapshot({
-        id: "snap-ha-4",
-        gameId: "game-hades",
-        gameName: "Hades",
-        fileName: "profile1_broken.sav",
-        daysAgo: 21,
-        label: "Corrupted test",
-        note: "Simulated bad copy for integrity UI.",
-        integrity: IntegrityStatus.Corrupted,
-        labelColor: LABEL_COLORS[4],
-        fileCount: 2,
-        files: ["profile1_broken.sav", "profile1_broken.bak"],
-        byteSize: 640_000,
-        sha256: "hadesbad004",
-      }),
-    ],
-  };
-
-  const cyberpunk = games.find((g) => g.id === CYBERPUNK_CONFLICT_ID);
-  if (cyberpunk) {
-    cyberpunk.hasConflict = true;
-    cyberpunk.conflictFiles = CYBERPUNK_CONFLICT_FILES.map((row) => ({ ...row }));
-  }
-
-  for (const game of games) {
-    if (!isValidGame(game)) {
-      throw new Error(`Invalid seed game: ${game.id}`);
-    }
-    const snapshots = vaultByGameId[game.id] ?? [];
-    if (snapshots.length < 3 || snapshots.length > 6) {
-      throw new Error(`Game ${game.id} must have 3–6 snapshots, got ${snapshots.length}`);
-    }
-    for (const snap of snapshots) {
-      if (!isValidSnapshot(snap)) {
-        throw new Error(`Invalid seed snapshot: ${snap.id}`);
-      }
-    }
-  }
-
-  return { games, vaultByGameId };
-}
-
-/** @param {string} iso */
-function daysAgoFromIso(iso) {
-  const ms = Date.now() - new Date(iso).getTime();
-  return Math.max(0, Math.floor(ms / 86_400_000));
-}
-
-/**
- * @param {Game} game
- * @param {DiscoveredSaveFile[]} files
- * @returns {Snapshot[]}
- */
-function snapshotsFromDiscoveredFiles(game, files) {
-  return files.map((file, index) =>
-    makeSnapshot({
-      id: id("snap"),
-      gameId: game.id,
-      gameName: game.name,
-      fileName: file.name,
-      daysAgo: daysAgoFromIso(file.modifiedAt),
-      label: file.name,
-      note: `Active save file (${file.relativePath})`,
-      integrity: IntegrityStatus.Unchecked,
-      labelColor: LABEL_COLORS[index % LABEL_COLORS.length],
-      fileCount: 1,
-      files: [file.relativePath || file.name],
-      byteSize: file.size,
-      sha256: null,
-      origin: SaveOrigin.ActiveDirectory,
-      absolutePath: file.absolutePath,
-    })
-  );
-}
-
-// ============================================================================
-// MOCK API — async functions with realistic delays and structured results
-// ============================================================================
-
-/**
- * @template T
- * @typedef {{ ok: true, data: T } | { ok: false, error: MockApiError }} MockApiResult
- */
-
-/**
- * @typedef {Object} MockApiError
- * @property {string} code
- * @property {string} message
- * @property {unknown=} details
- */
-
-/** @param {string} code @param {string} message @param {unknown=} details @returns {MockApiError} */
-function err(code, message, details) {
-  return { code, message, details };
-}
-
-/** @template T @param {T} data @returns {MockApiResult<T>} */
-function ok(data) {
-  return { ok: true, data };
-}
-
-/** @param {MockApiError} error @returns {MockApiResult<any>} */
-function fail(error) {
-  return { ok: false, error };
-}
-
-/** @param {string} operation */
-function maybeFailMutation(operation) {
-  if (MUTATION_FAIL_RATE <= 0) return null;
-  if (Math.random() >= MUTATION_FAIL_RATE) return null;
-  return err(
-    "SIMULATED_FAILURE",
-    `Simulated failure: ${operation}. (Set VITE_SLOTFORGE_MOCK_FAIL_RATE=0 to disable.)`,
-    { operation, rate: MUTATION_FAIL_RATE }
-  );
-}
-
-/** @param {number} min @param {number} max */
-function randomInt(min, max) {
-  return Math.floor(min + Math.random() * (max - min + 1));
-}
-
-/** @param {number} ms */
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function nowIso() {
-  return new Date().toISOString();
-}
-
-/** @param {string} prefix */
-function id(prefix) {
-  return `${prefix}-${Math.random().toString(16).slice(2)}-${Date.now().toString(16)}`;
-}
-
-/**
- * All mock API methods take plain JS state, and return updated copies.
- * This keeps the API pure and easy to integrate with a reducer (task 2.6).
- *
- * @typedef {Object} MockDb
- * @property {Game[]} games
- * @property {Record<string, Snapshot[]>} vaultByGameId
- * @property {LastSwap | null} lastSwap
- */
-
-/**
- * @param {MockDb} db
- * @param {number} bytes
- */
-function addVaultSize(db, bytes) {
-  void bytes;
-  // Placeholder helper: later we’ll compute totals via selector for StatusBar.
-}
-
-/**
- * @param {MockDb} db
- * @param {string} gameId
- */
-function getSnapshots(db, gameId) {
-  return db.vaultByGameId[gameId] ?? [];
-}
-
-/**
- * @param {MockDb} db
- * @param {string} gameId
- * @returns {Game | undefined}
- */
-function getGame(db, gameId) {
-  return db.games.find((g) => g.id === gameId);
-}
-
-/**
- * @param {MockDb} db
- * @param {string} snapshotId
- * @returns {Snapshot | undefined}
- */
-function findSnapshot(db, snapshotId) {
-  for (const list of Object.values(db.vaultByGameId)) {
-    const match = list.find((s) => s.id === snapshotId);
-    if (match) return match;
-  }
-  return undefined;
-}
-
-/**
- * @param {MockDb} db
- * @param {Snapshot} snapshot
- */
-function upsertSnapshot(db, snapshot) {
-  const list = db.vaultByGameId[snapshot.gameId] ?? [];
-  const idx = list.findIndex((s) => s.id === snapshot.id);
-  const nextList = idx >= 0 ? list.map((s, i) => (i === idx ? snapshot : s)) : [snapshot, ...list];
-  return { ...db, vaultByGameId: { ...db.vaultByGameId, [snapshot.gameId]: nextList } };
-}
-
-/**
- * @param {MockDb} db
- * @param {string} snapshotId
- */
-function removeSnapshot(db, snapshotId) {
-  /** @type {Record<string, Snapshot[]>} */
-  const next = {};
-  for (const [gameId, list] of Object.entries(db.vaultByGameId)) {
-    next[gameId] = list.filter((s) => s.id !== snapshotId);
-  }
-  return { ...db, vaultByGameId: next };
-}
-
-/**
- * Mock API surface (task 2.4). Each method returns a `{ ok, data | error }` result.
- * Errors are structured for toast rendering.
- */
-export const mockApi = {
-  /**
-   * Simulate discovery scan: updates timestamps and may add a new discovered game.
-   * @param {MockDb} db
-   * @returns {Promise<MockApiResult<{ db: MockDb }>>}
-   */
-  async scanGames(db) {
-    await delay(randomInt(200, 800));
-
-    const touched = db.games.map((g) => ({ ...g, updatedAt: nowIso() }));
-    let nextDb = { ...db, games: touched };
-
-    // Occasionally add a new mock discovered game for demo.
-    if (!db.games.some((g) => g.id === "game-stardew") && Math.random() < 0.35) {
-      const newGame = makeGame({
-        id: "game-stardew",
-        name: "Stardew Valley",
-        activeSaveDir: "C:/Users/Player/AppData/Roaming/StardewValley/Saves",
-        source: GameSource.AutoDiscovered,
-        tags: ["sim", "cozy"],
-        daysAgo: 0,
-        lastBackupDaysAgo: null,
-      });
-      nextDb = { ...nextDb, games: [newGame, ...nextDb.games] };
-    }
-
-    return ok({ db: nextDb });
-  },
-
-  /**
-   * Add a manual game entry and import discovered active save files.
-   * @param {MockDb} db
-   * @param {{ name: string, activeSaveDir: string, discoveredFiles?: DiscoveredSaveFile[] }} input
-   * @returns {Promise<MockApiResult<{ db: MockDb, game: Game, discoveredCount: number }>>}
-   */
-  async addGame(db, input) {
-    await delay(randomInt(400, 900));
-    const simulated = maybeFailMutation("addGame");
-    if (simulated) return fail(simulated);
-    const name = (input?.name ?? "").trim();
-    const activeSaveDir = (input?.activeSaveDir ?? "").trim();
-    const discoveredFiles = Array.isArray(input?.discoveredFiles) ? input.discoveredFiles : [];
-
-    if (!name) return fail(err("VALIDATION", "Game name is required."));
-    if (!activeSaveDir) return fail(err("VALIDATION", "Game path is required."));
-
-    const game = makeGame({
-      id: id("game"),
-      name,
-      activeSaveDir,
-      source: GameSource.UserAdded,
-      tags: [],
-      daysAgo: 0,
-      lastBackupDaysAgo: null,
-    });
-
-    const activeSnapshots = snapshotsFromDiscoveredFiles(game, discoveredFiles);
-    const nextDb = {
-      ...db,
-      games: [game, ...db.games],
-      vaultByGameId: { ...db.vaultByGameId, [game.id]: activeSnapshots },
-    };
-    return ok({ db: nextDb, game, discoveredCount: activeSnapshots.length });
-  },
-
-  /**
-   * Create a new vault snapshot for a game.
-   * @param {MockDb} db
-   * @param {{ gameId: string, label?: string, note?: string }} input
-   * @returns {Promise<MockApiResult<{ db: MockDb, snapshot: Snapshot }>>}
-   */
-  async backupGame(db, input) {
-    await delay(randomInt(900, 1500));
-    const simulated = maybeFailMutation("backupGame");
-    if (simulated) return fail(simulated);
-    const game = getGame(db, input.gameId);
-    if (!game) return fail(err("NOT_FOUND", "Game not found.", { gameId: input.gameId }));
-
-    const list = getSnapshots(db, game.id);
-    const fileName = `Backup-${list.length + 1}.sav`;
-    const snapshot = makeSnapshot({
-      id: id("snap"),
-      gameId: game.id,
-      gameName: game.name,
-      fileName,
-      daysAgo: 0,
-      label: (input.label ?? "").trim() || null,
-      note: (input.note ?? "").trim() || null,
-      integrity: IntegrityStatus.Unchecked,
-      labelColor: LABEL_COLORS[randomInt(0, LABEL_COLORS.length - 1)],
-      fileCount: randomInt(1, 6),
-      files: ["save.sav", "settings.json"].slice(0, randomInt(1, 2)),
-      byteSize: randomInt(120_000, 15_000_000),
-      sha256: null,
-    });
-
-    let nextDb = upsertSnapshot(db, snapshot);
-    nextDb = {
-      ...nextDb,
-      games: nextDb.games.map((g) =>
-        g.id === game.id ? { ...g, lastBackedUpAt: nowIso(), updatedAt: nowIso() } : g
-      ),
-    };
-    addVaultSize(nextDb, snapshot.metadata.byteSize);
-    return ok({ db: nextDb, snapshot });
-  },
-
-  /**
-   * Restore a snapshot to active directory (mock).
-   * @param {MockDb} db
-   * @param {{ snapshotId: string }} input
-   * @returns {Promise<MockApiResult<{ db: MockDb, lastSwap: LastSwap }>>}
-   */
-  async restoreSnapshot(db, input) {
-    await delay(randomInt(900, 1500));
-    const simulated = maybeFailMutation("restoreSnapshot");
-    if (simulated) return fail(simulated);
-    const snapshot = findSnapshot(db, input.snapshotId);
-    if (!snapshot) return fail(err("NOT_FOUND", "Snapshot not found.", { snapshotId: input.snapshotId }));
-
-    const game = getGame(db, snapshot.gameId);
-    if (!game) return fail(err("NOT_FOUND", "Game not found for snapshot.", { gameId: snapshot.gameId }));
-
-    /** @type {LastSwap} */
-    const lastSwap = {
-      gameId: game.id,
-      snapshotId: snapshot.id,
-      previousActivePath: `${game.activeSaveDir}/${snapshot.fileName}`,
-      restoredAt: nowIso(),
-    };
-
-    const nextDb = { ...db, lastSwap };
-    return ok({ db: nextDb, lastSwap });
-  },
-
-  /**
-   * Roll back the last restore (mock).
-   * @param {MockDb} db
-   * @returns {Promise<MockApiResult<{ db: MockDb }>>}
-   */
-  async rollbackSwap(db) {
-    await delay(randomInt(700, 1200));
-    const simulated = maybeFailMutation("rollbackSwap");
-    if (simulated) return fail(simulated);
-    if (!db.lastSwap) return fail(err("NO_ROLLBACK", "No swap to roll back."));
-    return ok({ db: { ...db, lastSwap: null } });
-  },
-
-  /**
-   * Verify one snapshot integrity (mock).
-   * @param {MockDb} db
-   * @param {{ snapshotId: string }} input
-   * @returns {Promise<MockApiResult<{ db: MockDb, snapshot: Snapshot }>>}
-   */
-  async verifySnapshot(db, input) {
-    await delay(randomInt(600, 1200));
-    const simulated = maybeFailMutation("verifySnapshot");
-    if (simulated) return fail(simulated);
-    const snapshot = findSnapshot(db, input.snapshotId);
-    if (!snapshot) return fail(err("NOT_FOUND", "Snapshot not found.", { snapshotId: input.snapshotId }));
-
-    const integrity = Math.random() < 0.08 ? IntegrityStatus.Corrupted : IntegrityStatus.Verified;
-    const nextSnapshot = {
-      ...snapshot,
-      integrity,
-      metadata: {
-        ...snapshot.metadata,
-        sha256: snapshot.metadata.sha256 ?? `sha_${snapshot.id.slice(-6)}_${randomInt(1000, 9999)}`,
-        modifiedAt: snapshot.metadata.modifiedAt ?? nowIso(),
-        createdAt: snapshot.metadata.createdAt ?? nowIso(),
-      },
-    };
-    const nextDb = upsertSnapshot(db, nextSnapshot);
-    return ok({ db: nextDb, snapshot: nextSnapshot });
-  },
-
-  /**
-   * Verify all snapshots for a game (mock batch).
-   * @param {MockDb} db
-   * @param {{ gameId: string }} input
-   * @returns {Promise<MockApiResult<{ db: MockDb, verifiedCount: number }>>}
-   */
-  async verifyAllSnapshots(db, input) {
-    await delay(randomInt(900, 1500));
-    const simulated = maybeFailMutation("verifyAllSnapshots");
-    if (simulated) return fail(simulated);
-    const list = getSnapshots(db, input.gameId);
-    if (list.length === 0) return ok({ db, verifiedCount: 0 });
-
-    let nextDb = db;
-    for (const snap of list) {
-      const res = await this.verifySnapshot(nextDb, { snapshotId: snap.id });
-      if (!res.ok) return res;
-      nextDb = res.data.db;
-    }
-    return ok({ db: nextDb, verifiedCount: list.length });
-  },
-
-  /**
-   * Update snapshot label/note/color (mock).
-   * @param {MockDb} db
-   * @param {{ snapshotId: string, label?: string | null, note?: string | null, labelColor?: string }} input
-   * @returns {Promise<MockApiResult<{ db: MockDb, snapshot: Snapshot }>>}
-   */
-  async updateAnnotation(db, input) {
-    await delay(randomInt(200, 500));
-    const simulated = maybeFailMutation("updateAnnotation");
-    if (simulated) return fail(simulated);
-    const snapshot = findSnapshot(db, input.snapshotId);
-    if (!snapshot) return fail(err("NOT_FOUND", "Snapshot not found.", { snapshotId: input.snapshotId }));
-
-    const nextSnapshot = {
-      ...snapshot,
-      label: input.label === undefined ? snapshot.label : (input.label ?? "").trim() || null,
-      note: input.note === undefined ? snapshot.note : (input.note ?? "").trim() || null,
-      labelColor: input.labelColor ?? snapshot.labelColor,
-    };
-    const nextDb = upsertSnapshot(db, nextSnapshot);
-    return ok({ db: nextDb, snapshot: nextSnapshot });
-  },
-
-  /**
-   * Delete a snapshot from the vault (mock).
-   * @param {MockDb} db
-   * @param {{ snapshotId: string }} input
-   * @returns {Promise<MockApiResult<{ db: MockDb }>>}
-   */
-  async deleteSnapshot(db, input) {
-    await delay(randomInt(500, 900));
-    const simulated = maybeFailMutation("deleteSnapshot");
-    if (simulated) return fail(simulated);
-    const snapshot = findSnapshot(db, input.snapshotId);
-    if (!snapshot) return fail(err("NOT_FOUND", "Snapshot not found.", { snapshotId: input.snapshotId }));
-    const nextDb = removeSnapshot(db, input.snapshotId);
-    return ok({ db: nextDb });
-  },
-};
 
 // ============================================================================
 // APP STATE (useReducer) — task 2.6
@@ -1267,7 +315,14 @@ export const mockApi = {
  */
 
 /**
- * @param {MockDb} db
+ * @typedef {Object} LibraryDb
+ * @property {Game[]} games
+ * @property {Record<string, Snapshot[]>} vaultByGameId
+ * @property {LastSwap | null} lastSwap
+ */
+
+/**
+ * @param {LibraryDb} db
  * @returns {AppState}
  */
 export function makeInitialAppState(db) {
@@ -1313,7 +368,7 @@ export function makeInitialAppState(db) {
 export function appReducer(state, action) {
   switch (action.type) {
     case "SET_DB": {
-      /** @type {MockDb} */
+      /** @type {LibraryDb} */
       const db = action.payload;
       const nextSelectedGameId = state.selectedGameId ?? db.games[0]?.id ?? null;
       const nextSelectedSnapshotId =
@@ -1832,89 +887,6 @@ export function useTheme() {
 // UI COMPONENTS (tasks 3.5–4.8)
 // ============================================================================
 
-/**
- * Scan a folder on disk for save-like files (Windows dev server).
- * @param {string} dirPath
- * @returns {Promise<DiscoveredSaveFile[]>}
- */
-async function scanSaveDirectory(dirPath) {
-  const trimmed = dirPath.trim();
-  if (!trimmed || !/^[A-Za-z]:[\\/]/.test(trimmed)) {
-    return [];
-  }
-
-  try {
-    const res = await fetch("/api/scan-save-directory", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: trimmed }),
-    });
-    const data = await res.json();
-    if (res.ok && data.ok && Array.isArray(data.files)) {
-      return data.files;
-    }
-  } catch {
-    // fall through
-  }
-  return [];
-}
-
-async function pickSaveDirectory() {
-  try {
-    const res = await fetch("/api/pick-folder", { method: "POST" });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.ok && typeof data.path === "string" && data.path.trim()) {
-        return data.path.trim();
-      }
-      if (data.cancelled) return null;
-    }
-  } catch {
-    // Dev server API unavailable (e.g. static host) — use browser picker below.
-  }
-
-  if (typeof window.showDirectoryPicker === "function") {
-    try {
-      const handle = await window.showDirectoryPicker({ mode: "read" });
-      return handle.name || null;
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return null;
-      throw err;
-    }
-  }
-
-  return new Promise((resolve, reject) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.setAttribute("webkitdirectory", "");
-    input.setAttribute("directory", "");
-    input.style.display = "none";
-    input.addEventListener("change", () => {
-      const file = input.files?.[0];
-      input.remove();
-      if (!file) {
-        resolve(null);
-        return;
-      }
-      const rel = file.webkitRelativePath || file.name;
-      const folder = rel.split(/[/\\]/)[0];
-      resolve(folder || null);
-    });
-    input.addEventListener("cancel", () => {
-      input.remove();
-      resolve(null);
-    });
-    document.body.appendChild(input);
-    input.click();
-    window.setTimeout(() => {
-      if (input.isConnected) {
-        input.remove();
-        resolve(null);
-      }
-    }, 120_000);
-  });
-}
-
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -1933,15 +905,6 @@ function gameInitials(name) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
-}
-
-/** @param {AppState} state @returns {MockDb} */
-function stateToDb(state) {
-  return {
-    games: state.games,
-    vaultByGameId: state.vaultByGameId,
-    lastSwap: state.operations.lastSwap,
-  };
 }
 
 const ToastContext = createContext(null);
@@ -2065,8 +1028,8 @@ function GameSidebar({ games, query, onQuery, selectedId, onSelect, onScan, scan
   }, [games, query]);
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-white/10 bg-bg-panel panel-animate">
-      <div className="density-pad border-b border-white/10">
+    <aside className="panel-animate flex h-full min-h-0 w-64 shrink-0 flex-col overflow-hidden border-r border-white/10 bg-bg-panel">
+      <div className="density-pad shrink-0 border-b border-white/10">
         <h1 className="header-bloom font-display text-2xl font-bold text-accent">SlotForge</h1>
         <div className="mt-3 flex gap-2">
           <button
@@ -2094,7 +1057,10 @@ function GameSidebar({ games, query, onQuery, selectedId, onSelect, onScan, scan
           />
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="scroll-y-panel min-h-0 flex-1 p-2" role="list" aria-label="Games">
+        {filtered.length === 0 ? (
+          <p className="px-1 py-2 font-mono text-xs text-text-dim">No games match your filter.</p>
+        ) : null}
         {filtered.map((g) => (
           <button
             key={g.id}
@@ -2163,8 +1129,8 @@ function VaultBrowser({
   const vaultList = sorted.filter((s) => s.origin === SaveOrigin.Vault);
 
   return (
-    <main className="flex min-w-0 flex-1 flex-col panel-animate">
-      <div className="density-pad flex items-center justify-between border-b border-white/10">
+    <main className="panel-animate flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="density-pad flex shrink-0 items-center justify-between border-b border-white/10">
         <h2 className="header-bloom font-display text-xl font-semibold">
           {game ? `${game.name} Vault` : "Vault"}
         </h2>
@@ -2195,7 +1161,7 @@ function VaultBrowser({
           </button>
         </div>
       </div>
-      <div className="density-pad flex flex-wrap gap-2 border-b border-white/10 font-mono text-xs">
+      <div className="density-pad flex shrink-0 flex-wrap gap-2 border-b border-white/10 font-mono text-xs">
         <select value={sort} onChange={(e) => onSort(e.target.value)} className="rounded border border-white/10 bg-bg-primary px-2 py-1">
           <option value="date-desc">Newest</option>
           <option value="date-asc">Oldest</option>
@@ -2231,7 +1197,7 @@ function VaultBrowser({
           ))}
         </select>
       </div>
-      <div className="flex-1 overflow-y-auto p-3">
+      <div className="scroll-y-panel min-h-0 flex-1 p-3">
         {sorted.length === 0 ? (
           <p className="font-mono text-sm text-text-dim">
             {game
@@ -2413,14 +1379,14 @@ function DetailPanel({
     );
   }
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-l border-white/10 bg-bg-panel panel-animate">
-      <div className="density-pad border-b border-white/10">
+    <aside className="panel-animate flex h-full min-h-0 w-72 shrink-0 flex-col overflow-hidden border-l border-white/10 bg-bg-panel">
+      <div className="density-pad shrink-0 border-b border-white/10">
         <h3 className="header-bloom font-display text-lg font-semibold">Details</h3>
         <div className="mt-2">
           <IntegrityBadge integrity={snapshot.integrity} loading={verifying} />
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto density-pad font-mono text-xs">
+      <div className="scroll-y-panel min-h-0 flex-1 density-pad font-mono text-xs">
         <p className="text-text-dim">Notes</p>
         <p className="mb-3">{snapshot.note ?? "—"}</p>
         <p className="text-text-dim">SHA-256</p>
@@ -2494,7 +1460,7 @@ function AddGameModal({ open, onClose, onSubmit, loading }) {
 
   const refreshScan = useCallback(async (dirPath) => {
     const trimmed = dirPath.trim();
-    if (!/^[A-Za-z]:[\\/]/.test(trimmed)) {
+    if (!trimmed) {
       setDiscovered([]);
       return;
     }
@@ -2512,7 +1478,7 @@ function AddGameModal({ open, onClose, onSubmit, loading }) {
   useEffect(() => {
     if (!open) return;
     const trimmed = path.trim();
-    if (!/^[A-Za-z]:[\\/]/.test(trimmed)) {
+    if (!trimmed) {
       setDiscovered([]);
       return;
     }
@@ -2926,14 +1892,13 @@ function PanelCollapseButton({ collapsed, onClick, side }) {
 function SlotForgeAppInner() {
   const { theme } = useTheme();
   const { pushToast } = useToast();
-  const seed = useMemo(() => createSeedData(), []);
   const initialDb = useMemo(
     () => ({
-      games: seed.games,
-      vaultByGameId: seed.vaultByGameId,
+      games: [],
+      vaultByGameId: {},
       lastSwap: null,
     }),
-    [seed]
+    []
   );
 
   const [state, dispatch] = useReducer(appReducer, initialDb, makeInitialAppState);
@@ -2986,65 +1951,83 @@ function SlotForgeAppInner() {
     return entry;
   }, []);
 
-  const applyDb = useCallback((db) => {
-    dispatch({ type: "SET_DB", payload: db });
+  const applyLibrary = useCallback((library) => {
+    dispatch({
+      type: "SET_DB",
+      payload: {
+        games: library.games,
+        vaultByGameId: library.vaultByGameId,
+        lastSwap: library.lastSwap ?? null,
+      },
+    });
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: true } });
+      const res = await slotforgeApi.loadLibrary();
+      if (cancelled) return;
+      dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: false } });
+      if (!res.ok) {
+        pushToast({ type: "error", message: res.error.message });
+        return;
+      }
+      applyLibrary(res.data);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyLibrary, pushToast]);
 
   const handleScan = useCallback(async () => {
     dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: true } });
-    const res = await mockApi.scanGames(stateToDb(state));
+    const res = await slotforgeApi.scanGames();
     dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: false } });
     if (!res.ok) {
       logOp("scan", "failure", res.error.message);
       pushToast({ type: "error", message: res.error.message });
       return;
     }
-    applyDb(res.data.db);
-    logOp("scan", "success", `Library has ${res.data.db.games.length} game(s).`);
+    applyLibrary(res.data);
+    logOp("scan", "success", `Library has ${res.data.games.length} game(s).`);
     pushToast({ type: "success", message: "Scan complete." });
-  }, [state, applyDb, logOp, pushToast]);
+  }, [applyLibrary, logOp, pushToast]);
 
   const handleRescanActive = useCallback(async () => {
     if (!selectedGame) return;
     setRescanningActive(true);
     try {
       const files = await scanSaveDirectory(selectedGame.activeSaveDir);
-      const activeSnapshots = snapshotsFromDiscoveredFiles(selectedGame, files);
-      const db = stateToDb(state);
-      const vaultOnly = (db.vaultByGameId[selectedGame.id] ?? []).filter(
-        (s) => s.origin === SaveOrigin.Vault
-      );
-      const nextDb = {
-        ...db,
-        vaultByGameId: {
-          ...db.vaultByGameId,
-          [selectedGame.id]: [...activeSnapshots, ...vaultOnly],
-        },
-      };
-      applyDb(nextDb);
-      if (activeSnapshots[0]) {
-        dispatch({ type: "SELECT_SNAPSHOT", payload: activeSnapshots[0].id });
+      const res = await slotforgeApi.loadLibrary();
+      if (res.ok) {
+        applyLibrary(res.data);
+        const list = res.data.vaultByGameId[selectedGame.id] ?? [];
+        const firstActive = list.find((s) => s.origin === SaveOrigin.ActiveDirectory);
+        if (firstActive) {
+          dispatch({ type: "SELECT_SNAPSHOT", payload: firstActive.id });
+        }
       }
       pushToast({
-        type: activeSnapshots.length > 0 ? "success" : "error",
+        type: files.length > 0 ? "success" : "error",
         message:
-          activeSnapshots.length > 0
-            ? `Found ${activeSnapshots.length} save file(s) in folder.`
+          files.length > 0
+            ? `Found ${files.length} save file(s) in folder.`
             : "No save files found in that folder.",
       });
     } finally {
       setRescanningActive(false);
     }
-  }, [state, selectedGame, applyDb, pushToast]);
+  }, [selectedGame, applyLibrary, pushToast]);
 
   const handleAddGame = useCallback(
     async ({ name, activeSaveDir, discoveredFiles }) => {
       dispatch({ type: "SET_LOADING", payload: { key: "addingGame", value: true } });
       let files = Array.isArray(discoveredFiles) ? discoveredFiles : [];
-      if (files.length === 0 && /^[A-Za-z]:[\\/]/.test(activeSaveDir)) {
+      if (files.length === 0 && activeSaveDir.trim()) {
         files = await scanSaveDirectory(activeSaveDir);
       }
-      const res = await mockApi.addGame(stateToDb(state), { name, activeSaveDir, discoveredFiles: files });
+      const res = await slotforgeApi.addGame({ name, activeSaveDir });
       dispatch({ type: "SET_LOADING", payload: { key: "addingGame", value: false } });
       dispatch({ type: "CLOSE_MODAL", payload: "addGame" });
       if (!res.ok) {
@@ -3052,9 +2035,9 @@ function SlotForgeAppInner() {
         pushToast({ type: "error", message: res.error.message });
         return;
       }
-      applyDb(res.data.db);
+      applyLibrary(res.data.library);
       dispatch({ type: "SELECT_GAME", payload: res.data.game.id });
-      const count = res.data.discoveredCount;
+      const count = res.data.discoveredCount ?? files.length;
       logOp("add_game", "success", `Added ${res.data.game.name} (${count} save file(s)).`, res.data.game.id);
       pushToast({
         type: count > 0 ? "success" : "error",
@@ -3064,7 +2047,7 @@ function SlotForgeAppInner() {
             : `Added ${res.data.game.name}, but no save files were found in that folder.`,
       });
     },
-    [state, applyDb, logOp, pushToast]
+    [applyLibrary, logOp, pushToast]
   );
 
   const handleBackup = useCallback(
@@ -3075,7 +2058,7 @@ function SlotForgeAppInner() {
         type: "SET_PROGRESS",
         payload: { type: "backup", current: 0, total: 100, message: "Backing up…" },
       });
-      const res = await mockApi.backupGame(stateToDb(state), {
+      const res = await slotforgeApi.backupGame({
         gameId: state.selectedGameId,
         label,
         note,
@@ -3088,18 +2071,22 @@ function SlotForgeAppInner() {
         pushToast({ type: "error", message: res.error.message });
         return;
       }
-      applyDb(res.data.db);
+      applyLibrary(res.data.library);
       dispatch({ type: "SELECT_SNAPSHOT", payload: res.data.snapshot.id });
       logOp("backup", "success", "Backup created.", state.selectedGameId, res.data.snapshot.id);
       pushToast({ type: "success", message: "Backup created." });
     },
-    [state, applyDb, logOp, pushToast]
+    [state.selectedGameId, applyLibrary, logOp, pushToast]
   );
 
   const handleRestore = useCallback(async () => {
     if (!selectedSnapshot) return;
     dispatch({ type: "SET_LOADING", payload: { key: "restoring", value: true } });
-    const res = await mockApi.restoreSnapshot(stateToDb(state), { snapshotId: selectedSnapshot.id });
+    const res = await slotforgeApi.restoreSnapshot({
+      snapshotId: selectedSnapshot.id,
+      confirmedDestructive: true,
+      resolutionChoice: ResolutionChoice.KeepSource,
+    });
     dispatch({ type: "SET_LOADING", payload: { key: "restoring", value: false } });
     dispatch({ type: "CLOSE_MODAL", payload: "restore" });
     if (!res.ok) {
@@ -3107,43 +2094,43 @@ function SlotForgeAppInner() {
       pushToast({ type: "error", message: res.error.message });
       return;
     }
-    applyDb(res.data.db);
+    applyLibrary(res.data.library);
     dispatch({ type: "SET_LAST_SWAP", payload: res.data.lastSwap });
     logOp("restore", "success", "Restored to active.", selectedSnapshot.gameId, selectedSnapshot.id);
     pushToast({ type: "success", message: "Restore complete. Rollback available." });
-  }, [state, selectedSnapshot, applyDb, logOp, pushToast]);
+  }, [selectedSnapshot, applyLibrary, logOp, pushToast]);
 
   const handleRollback = useCallback(async () => {
     if (!state.operations.lastSwap) return;
     dispatch({ type: "SET_LOADING", payload: { key: "rollingBack", value: true } });
-    const res = await mockApi.rollbackSwap(stateToDb(state));
+    const res = await slotforgeApi.rollbackSwap();
     dispatch({ type: "SET_LOADING", payload: { key: "rollingBack", value: false } });
     if (!res.ok) {
       logOp("rollback", "failure", res.error.message);
       pushToast({ type: "error", message: res.error.message });
       return;
     }
-    applyDb(res.data.db);
+    applyLibrary(res.data);
     dispatch({ type: "SET_LAST_SWAP", payload: null });
     logOp("rollback", "success", "Rollback complete.");
     pushToast({ type: "success", message: "Rollback complete." });
-  }, [state, applyDb, logOp, pushToast]);
+  }, [state.operations.lastSwap, applyLibrary, logOp, pushToast]);
 
   const handleVerifySnapshot = useCallback(
     async (snapshotId) => {
       dispatch({ type: "SET_LOADING", payload: { key: "verifying", value: true } });
-      const res = await mockApi.verifySnapshot(stateToDb(state), { snapshotId });
+      const res = await slotforgeApi.verifySnapshot({ snapshotId });
       dispatch({ type: "SET_LOADING", payload: { key: "verifying", value: false } });
       if (!res.ok) {
         logOp("verify", "failure", res.error.message, null, snapshotId);
         pushToast({ type: "error", message: res.error.message });
         return;
       }
-      applyDb(res.data.db);
+      applyLibrary(res.data.library);
       logOp("verify", "success", `Integrity: ${res.data.snapshot.integrity}.`, null, snapshotId);
       pushToast({ type: "success", message: `Verified: ${res.data.snapshot.integrity}` });
     },
-    [state, applyDb, logOp, pushToast]
+    [applyLibrary, logOp, pushToast]
   );
 
   const handleVerifyAll = useCallback(async () => {
@@ -3154,7 +2141,7 @@ function SlotForgeAppInner() {
       type: "SET_PROGRESS",
       payload: { type: "verify_all", current: 0, total: list.length, message: "Verifying…" },
     });
-    const res = await mockApi.verifyAllSnapshots(stateToDb(state), { gameId: state.selectedGameId });
+    const res = await slotforgeApi.verifyAllSnapshots({ gameId: state.selectedGameId });
     dispatch({ type: "SET_LOADING", payload: { key: "batchVerifying", value: false } });
     dispatch({ type: "SET_PROGRESS", payload: { type: null, current: 0, total: 0, message: null } });
     if (!res.ok) {
@@ -3162,28 +2149,31 @@ function SlotForgeAppInner() {
       pushToast({ type: "error", message: res.error.message });
       return;
     }
-    applyDb(res.data.db);
+    applyLibrary(res.data.library);
     logOp("verify_all", "success", `Verified ${res.data.verifiedCount} snapshot(s).`, state.selectedGameId);
     pushToast({ type: "success", message: `Verified ${res.data.verifiedCount} snapshot(s).` });
-  }, [state, applyDb, logOp, pushToast]);
+  }, [state.selectedGameId, state.vaultByGameId, applyLibrary, logOp, pushToast]);
 
   const handleAnnotation = useCallback(
     async (snapshotId, patch) => {
-      const res = await mockApi.updateAnnotation(stateToDb(state), { snapshotId, ...patch });
+      const res = await slotforgeApi.updateAnnotation({ snapshotId, ...patch });
       if (!res.ok) {
         pushToast({ type: "error", message: res.error.message });
         return;
       }
-      applyDb(res.data.db);
+      applyLibrary(res.data.library);
       logOp("annotate", "success", "Annotation saved.", null, snapshotId);
     },
-    [state, applyDb, logOp, pushToast]
+    [applyLibrary, logOp, pushToast]
   );
 
   const handleDelete = useCallback(async () => {
     if (!selectedSnapshot) return;
     dispatch({ type: "SET_LOADING", payload: { key: "deleting", value: true } });
-    const res = await mockApi.deleteSnapshot(stateToDb(state), { snapshotId: selectedSnapshot.id });
+    const res = await slotforgeApi.deleteSnapshot({
+      snapshotId: selectedSnapshot.id,
+      confirmed: true,
+    });
     dispatch({ type: "SET_LOADING", payload: { key: "deleting", value: false } });
     dispatch({ type: "CLOSE_MODAL", payload: "delete" });
     if (!res.ok) {
@@ -3191,10 +2181,10 @@ function SlotForgeAppInner() {
       pushToast({ type: "error", message: res.error.message });
       return;
     }
-    applyDb(res.data.db);
+    applyLibrary(res.data);
     logOp("delete", "success", "Snapshot deleted.", selectedSnapshot.gameId, selectedSnapshot.id);
     pushToast({ type: "success", message: "Snapshot deleted." });
-  }, [state, selectedSnapshot, applyDb, logOp, pushToast]);
+  }, [selectedSnapshot, applyLibrary, logOp, pushToast]);
 
   const sidebarCollapsed = state.ui.panels.sidebarCollapsed;
   const detailCollapsed = state.ui.panels.detailCollapsed;
@@ -3213,7 +2203,7 @@ function SlotForgeAppInner() {
             />
           </div>
         ) : (
-          <div className="relative shrink-0">
+          <div className="relative flex h-full min-h-0 shrink-0">
             <GameSidebar
               games={state.games}
               query={gameQuery}
@@ -3267,7 +2257,7 @@ function SlotForgeAppInner() {
             />
           </div>
         ) : (
-          <div className="relative shrink-0">
+          <div className="relative flex h-full min-h-0 shrink-0">
             <DetailPanel
               snapshot={selectedSnapshot}
               game={selectedGame}

@@ -25,14 +25,22 @@
 
 html {
   font-size: var(--font-size-base);
+  height: 100%;
 }
 
 body {
   margin: 0;
+  min-height: 100%;
+  height: 100%;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: "Rajdhani", system-ui, sans-serif;
   overflow: hidden;
+}
+
+#root {
+  min-height: 100%;
+  height: 100%;
 }
 
 .font-display {
@@ -149,4 +157,33 @@ html[data-glow="1"] .panel-glow.is-active {
 }
 [data-density="comfortable"] .density-pad {
   padding: 1rem;
+}
+
+/* Scrollable panels (game list, vault, detail) */
+.scroll-y-panel {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 45%, var(--bg-panel)) var(--bg-primary);
+}
+
+.scroll-y-panel::-webkit-scrollbar {
+  width: 10px;
+}
+
+.scroll-y-panel::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+  border-left: 1px solid color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.scroll-y-panel::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 40%, var(--bg-panel));
+  border: 2px solid var(--bg-panel);
+  border-radius: 6px;
+}
+
+.scroll-y-panel::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent) 65%, var(--bg-panel));
 }

@@ -1,0 +1,160 @@
+use serde::Deserialize;
+use slotforge::api::{
+    from_anyhow, AddGameResultDto, ApiResponse, BackupResultDto, LibraryStateDto, RestoreResultDto,
+    SnapshotResultDto, VerifyAllResultDto,
+};
+use slotforge::domain::conflict::ResolutionChoice;
+use slotforge::services::discovery_service::DiscoveredSaveFile;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AddGameArgs {
+    name: String,
+    active_save_dir: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BackupGameArgs {
+    game_id: String,
+    label: Option<String>,
+    note: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RestoreSnapshotArgs {
+    snapshot_id: String,
+    resolution_choice: Option<ResolutionChoice>,
+    confirmed_destructive: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SnapshotIdArgs {
+    snapshot_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GameIdArgs {
+    game_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateAnnotationArgs {
+    snapshot_id: String,
+    label: Option<String>,
+    note: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeleteSnapshotArgs {
+    snapshot_id: String,
+    confirmed: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ScanDirectoryArgs {
+    path: String,
+}
+
+#[tauri::command]
+fn load_library() -> ApiResponse<LibraryStateDto> {
+    from_anyhow(slotforge::api::load_library())
+}
+
+#[tauri::command]
+fn scan_games() -> ApiResponse<LibraryStateDto> {
+    from_anyhow(slotforge::api::scan_games())
+}
+
+#[tauri::command]
+fn add_game(args: AddGameArgs) -> ApiResponse<AddGameResultDto> {
+    from_anyhow(slotforge::api::add_game(&args.name, &args.active_save_dir))
+}
+
+#[tauri::command]
+fn backup_game(args: BackupGameArgs) -> ApiResponse<BackupResultDto> {
+    from_anyhow(slotforge::api::backup_game(
+        &args.game_id,
+        args.label,
+        args.note,
+    ))
+}
+
+#[tauri::command]
+fn restore_snapshot(args: RestoreSnapshotArgs) -> ApiResponse<RestoreResultDto> {
+    from_anyhow(slotforge::api::restore_snapshot(
+        &args.snapshot_id,
+        args.resolution_choice,
+        args.confirmed_destructive,
+    ))
+}
+
+#[tauri::command]
+fn rollback_swap() -> ApiResponse<LibraryStateDto> {
+    from_anyhow(slotforge::api::rollback_swap())
+}
+
+#[tauri::command]
+fn verify_snapshot(args: SnapshotIdArgs) -> ApiResponse<SnapshotResultDto> {
+    from_anyhow(slotforge::api::verify_snapshot(&args.snapshot_id))
+}
+
+#[tauri::command]
+fn verify_all_snapshots(args: GameIdArgs) -> ApiResponse<VerifyAllResultDto> {
+    from_anyhow(slotforge::api::verify_all_snapshots(&args.game_id))
+}
+
+#[tauri::command]
+fn update_annotation(args: UpdateAnnotationArgs) -> ApiResponse<SnapshotResultDto> {
+    from_anyhow(slotforge::api::update_annotation(
+        &args.snapshot_id,
+        args.label,
+        args.note,
+    ))
+}
+
+#[tauri::command]
+fn delete_snapshot(args: DeleteSnapshotArgs) -> ApiResponse<LibraryStateDto> {
+    from_anyhow(slotforge::api::delete_snapshot(
+        &args.snapshot_id,
+        args.confirmed,
+    ))
+}
+
+#[tauri::command]
+fn scan_save_directory(args: ScanDirectoryArgs) -> ApiResponse<Vec<DiscoveredSaveFile>> {
+    from_anyhow(slotforge::api::scan_save_directory(&args.path))
+}
+
+#[tauri::command]
+fn destructive_restore_warning(args: SnapshotIdArgs) -> ApiResponse<String> {
+    from_anyhow(slotforge::api::destructive_restore_warning(&args.snapshot_id))
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            load_library,
+            scan_games,
+            add_game,
+            backup_game,
+            restore_snapshot,
+            rollback_swap,
+            verify_snapshot,
+            verify_all_snapshots,
+            update_annotation,
+            delete_snapshot,
+            scan_save_directory,
+            destructive_restore_warning,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running SlotForge desktop");
+}

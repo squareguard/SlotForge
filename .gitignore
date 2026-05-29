@@ -119,7 +119,7 @@ $RECYCLE.BIN/
 !.vscode/tasks.json
 !.vscode/launch.json
 
-# --- Cursor & local AI tooling -----------------------------------------------
+/src-tauri/gen/
 .cursor/
 .aiassistant/
 

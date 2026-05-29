@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use crate::domain::game::{GameRecord, GameSource};
@@ -57,8 +58,93 @@ pub fn discover_games_from_roots(roots: &[PathBuf]) -> Result<DiscoverySummary> 
     })
 }
 
+/// Names of per-slot save folders (e.g. Cyberpunk's `AutoSave-1`) — not separate games.
+fn is_save_slot_directory_name(name: &str) -> bool {
+    let lower = name.trim().to_ascii_lowercase();
+    if lower.is_empty() {
+        return false;
+    }
+    if lower == "saves" || lower == "save" || lower == "savegames" || lower == "save games" {
+        return true;
+    }
+    if lower.starts_with("autosave")
+        || lower.starts_with("quicksave")
+        || lower.starts_with("manualsave")
+        || lower.starts_with("cloudsave")
+        || lower.starts_with("savegame")
+        || lower.starts_with("save_")
+        || lower.starts_with("slot")
+    {
+        return true;
+    }
+    // Steam-style numeric user dirs under a game folder (e.g. 76561198000000000)
+    lower.chars().all(|c| c.is_ascii_digit()) && lower.len() >= 8
+}
+
+/// Walk up from a save's parent folder to the game root (e.g. `.../Cyberpunk 2077`, not `AutoSave-1`).
+fn canonical_game_root(mut dir: PathBuf, scan_root: &Path) -> PathBuf {
+    loop {
+        let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
+            break;
+        };
+        if !is_save_slot_directory_name(name) {
+            break;
+        }
+        let Some(parent) = dir.parent() else {
+            break;
+        };
+        if parent == scan_root {
+            break;
+        }
+        if !parent.starts_with(scan_root) {
+            break;
+        }
+        dir = parent.to_path_buf();
+    }
+    dir
+}
+
 fn collect_candidate_game_dirs(root: &Path) -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
+    let mut game_roots = HashMap::<String, PathBuf>::new();
+
+    for entry in WalkDir::new(root)
+        .max_depth(5)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        let path = entry.path();
+        if !path.is_file() || !is_save_like_extension(path) {
+            continue;
+        }
+        let Some(save_parent) = path.parent() else {
+            continue;
+        };
+        let game_root = canonical_game_root(save_parent.to_path_buf(), root);
+        let key = game_root.to_string_lossy().to_lowercase();
+        game_roots.entry(key).or_insert(game_root);
+    }
+
+    normalize_and_dedup_paths(game_roots.into_values().collect())
+}
+
+/// Save-like file discovered under a user-selected directory (for add-game / rescan UI).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveredSaveFile {
+    pub name: String,
+    pub absolute_path: String,
+    pub relative_path: String,
+    pub size: u64,
+    pub modified_at: String,
+}
+
+/// Walk `root` up to depth 4 and return save-like files (same extensions as discovery).
+pub fn scan_save_files_in_directory(root: &Path) -> Result<Vec<DiscoveredSaveFile>> {
+    let mut files = Vec::new();
+    if !root.exists() || !root.is_dir() {
+        return Ok(files);
+    }
 
     for entry in WalkDir::new(root)
         .max_depth(4)
@@ -67,41 +153,50 @@ fn collect_candidate_game_dirs(root: &Path) -> Vec<PathBuf> {
         .filter_map(Result::ok)
     {
         let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-
-        if contains_save_files(path) {
-            dirs.push(path.to_path_buf());
-        }
-    }
-
-    normalize_and_dedup_paths(dirs)
-}
-
-fn contains_save_files(dir: &Path) -> bool {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return false;
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
         if !path.is_file() {
             continue;
         }
-
-        if let Some(ext) = path.extension().and_then(|value| value.to_str()) {
-            let ext = ext.to_ascii_lowercase();
-            if matches!(
-                ext.as_str(),
-                "sav" | "save" | "dat" | "bak" | "profile" | "json"
-            ) {
-                return true;
-            }
+        if !is_save_like_extension(path) {
+            continue;
         }
+
+        let metadata = fs::metadata(path)?;
+        let modified_at = metadata
+            .modified()
+            .map(chrono::DateTime::<Utc>::from)
+            .unwrap_or_else(|_| Utc::now());
+
+        let relative_path = path
+            .strip_prefix(root)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_else(|_| path.file_name().unwrap_or_default().to_string_lossy().to_string());
+
+        files.push(DiscoveredSaveFile {
+            name: path
+                .file_name()
+                .map(|v| v.to_string_lossy().to_string())
+                .unwrap_or_else(|| "save.dat".to_string()),
+            absolute_path: path.to_string_lossy().to_string(),
+            relative_path,
+            size: metadata.len(),
+            modified_at: modified_at.to_rfc3339(),
+        });
     }
 
-    false
+    files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    Ok(files)
+}
+
+fn is_save_like_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|value| value.to_str())
+        .map(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "sav" | "save" | "dat" | "bak" | "profile" | "json"
+            )
+        })
+        .unwrap_or(false)
 }
 
 fn game_record_from_dir(path: &Path) -> Option<GameRecord> {
@@ -144,8 +239,47 @@ mod tests {
         assert_eq!(summary.scanned_roots.len(), 1);
         assert_eq!(summary.discovered_games.len(), 1);
         assert_eq!(summary.discovered_games[0].name, "MyGame");
+        assert_eq!(summary.discovered_games[0].active_save_dir, game_dir);
 
         fs::remove_dir_all(temp_root).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn groups_nested_autosave_slots_under_game_folder() {
+        let temp_root = unique_temp_dir("discovery_nested");
+        let publisher = temp_root.join("CD Projekt Red");
+        let game_dir = publisher.join("Cyberpunk 2077");
+        for slot in ["AutoSave-1", "AutoSave-2", "AutoSave-3"] {
+            let slot_dir = game_dir.join(slot);
+            fs::create_dir_all(&slot_dir).expect("create slot dir");
+            fs::write(slot_dir.join("sav.dat"), b"save-data").expect("write save file");
+        }
+
+        let summary = discover_games_from_roots(std::slice::from_ref(&temp_root))
+            .expect("discover games should succeed");
+
+        assert_eq!(
+            summary.discovered_games.len(),
+            1,
+            "expected one game, got: {:?}",
+            summary
+                .discovered_games
+                .iter()
+                .map(|g| g.active_save_dir.display().to_string())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(summary.discovered_games[0].name, "Cyberpunk 2077");
+        assert_eq!(summary.discovered_games[0].active_save_dir, game_dir);
+
+        fs::remove_dir_all(temp_root).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn save_slot_directory_name_detection() {
+        assert!(super::is_save_slot_directory_name("AutoSave-1"));
+        assert!(super::is_save_slot_directory_name("Quicksave"));
+        assert!(!super::is_save_slot_directory_name("Cyberpunk 2077"));
+        assert!(!super::is_save_slot_directory_name("MyGame"));
     }
 
     fn unique_temp_dir(prefix: &str) -> PathBuf {
