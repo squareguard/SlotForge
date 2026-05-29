@@ -2,7 +2,7 @@
 
 SlotForge is a cross-platform desktop application for managing PC game save files. It discovers games and save directories, backs up saves to a central vault, annotates them with labels and notes, and supports safe hot-swapping between vault and active game folders—with conflict detection, rollback, and integrity verification.
 
-**Status:** MVP backend and service layer are implemented in Rust. A **Phase 1 React mock UI** lives in `frontend/` (Vite + Tailwind, port 8000); it exercises the full save-manager UX against in-memory seed data with no Rust IPC yet.
+**Status:** The MVP backend and service layer are implemented in Rust. The **React frontend** in `frontend/` is implemented and covers the full save-manager UX (library, vault, backup/restore, conflict handling, integrity checks, theme editor). It runs against an in-memory **mock API** aligned with the Rust domain types; wiring to the Rust binary (e.g. Tauri or another IPC layer) is not connected yet.
 
 ## Features
 
@@ -15,6 +15,8 @@ SlotForge is a cross-platform desktop application for managing PC game save file
 
 ## Tech stack
 
+### Backend (Rust)
+
 | Area | Technology |
 |------|------------|
 | Language | [Rust](https://www.rust-lang.org/) (edition 2021) |
@@ -26,12 +28,32 @@ SlotForge is a cross-platform desktop application for managing PC game save file
 | Logging | `tracing`, `tracing-subscriber` |
 | Async runtime | `tokio` (available for future I/O-heavy work) |
 | Persistence | JSON config/registries; `rusqlite` is a dependency for planned SQLite storage |
-| CI | GitHub Actions matrix on Windows, Linux, and macOS |
+
+### Frontend (React)
+
+| Area | Technology |
+|------|------------|
+| UI library | [React](https://react.dev/) 18 |
+| Build tool | [Vite](https://vite.dev/) 6 (`@vitejs/plugin-react`) |
+| Styling | [Tailwind CSS](https://tailwindcss.com/) 3, [PostCSS](https://postcss.org/), [Autoprefixer](https://github.com/postcss/autoprefixer) |
+| Icons | [lucide-react](https://lucide.dev/) |
+| Language | JavaScript (JSX), JSDoc types aligned with Rust domain models |
+| Dev server | Port **8000** (`strictPort` in `vite.config.js`) |
+| Custom tooling | `vite-folder-picker-plugin.js` — dev-only folder picker and save-file scan API (Windows native dialog; mirrors Rust discovery extensions) |
+
+The UI is a single self-contained module (`frontend/src/SlotForgeApp.jsx`) with custom components only (no MUI, Chakra, or shadcn). State lives in React (`useReducer` / hooks); there is no `localStorage` or `sessionStorage`.
+
+### CI
+
+| Area | Technology |
+|------|------------|
+| Pipelines | GitHub Actions matrix on Windows, Linux, and macOS (`cargo fmt`, `clippy`, `test`) |
 
 ## Requirements
 
 - **Rust toolchain:** stable (1.70+ recommended). Install from [rustup.rs](https://rustup.rs/).
-- **Platforms:** Windows, Linux, macOS (paths and defaults are OS-aware).
+- **Node.js:** 18+ and npm (for the frontend dev server and production build).
+- **Platforms:** Windows, Linux, macOS (paths and defaults are OS-aware). The dev folder-picker plugin uses a native Windows dialog; on other OSes, path entry still works in the UI.
 
 ## Build
 
@@ -49,9 +71,18 @@ cargo build --release
 
 The executable is `target/release/slotforge` (or `slotforge.exe` on Windows).
 
-## React frontend (Phase 1 — mock only)
+## Frontend
 
-The UI is a single self-contained artifact at `frontend/src/SlotForgeApp.jsx` (types, seed data, `mockApi`, theme, and all components). State is in-memory only — no `localStorage` / `sessionStorage`.
+The React app implements the full save-manager workflow against a **`mockApi`** layer whose shapes match the Rust domain (`GameRecord`, `SaveRecord`, `ConflictComparison`, etc.). Seed data includes five demo games with vault snapshots, conflict scenarios, and integrity states.
+
+**Implemented UI areas:**
+
+- **Library** — game sidebar with search, scan, and add-game flow (folder picker in dev on Windows)
+- **Vault** — snapshot cards, sort/filter, detail panel, backup modal, annotations, delete with confirmation
+- **Operations** — restore with conflict diff, rollback, per-snapshot and batch verify, progress and status bar
+- **Settings** — theme editor with five presets, live preview, export/import JSON, scanline and glow toggles
+
+### Run the dev server
 
 ```bash
 cd frontend
@@ -59,9 +90,24 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:8000](http://localhost:8000). Production build: `npm run build` (output in `frontend/dist/`).
+Open [http://localhost:8000](http://localhost:8000).
 
-Optional: set `VITE_SLOTFORGE_MOCK_FAIL_RATE=0` in `.env` to disable random mock API failures during demos.
+### Production build
+
+```bash
+cd frontend
+npm run build
+```
+
+Output is written to `frontend/dist/`. Preview the production bundle locally:
+
+```bash
+npm run preview
+```
+
+### Environment
+
+Optional: create `frontend/.env` and set `VITE_SLOTFORGE_MOCK_FAIL_RATE=0` to disable random simulated failures on mutating mock API calls during demos.
 
 ## Run locally (Rust CLI)
 
@@ -146,16 +192,32 @@ src/
   platform/            # Path normalization, OS default paths
   services/            # Core business logic
   storage/             # Persistence adapters (SQLite stub)
-  ui/                  # Navigation, theme, screen state/actions
+  ui/                  # Rust screen modules (CLI-era navigation; parallel to React UX)
+frontend/
+  index.html           # HTML shell
+  vite.config.js       # Vite + React plugin, port 8000
+  vite-folder-picker-plugin.js  # Dev folder picker / save scan API
+  src/
+    main.jsx           # React entry point
+    SlotForgeApp.jsx   # Full UI, mockApi, seed data, components
+    index.css          # Global styles, theme tokens, animations
+  tailwind.config.js
+  postcss.config.js
 tests/fixtures/        # Cross-platform test fixture conventions
-.github/workflows/     # CI test matrix
+.github/workflows/     # CI test matrix (Rust)
 ```
 
 ## Architecture overview
 
 ```mermaid
 flowchart LR
-  subgraph UI
+  subgraph React["React frontend (frontend/)"]
+    App[SlotForgeApp.jsx]
+    Mock[mockApi]
+    App --> Mock
+  end
+
+  subgraph RustUI["Rust ui modules (src/ui/)"]
     Library[library_screen]
     Vault[vault_screen]
     Settings[settings_screen]
@@ -179,6 +241,7 @@ flowchart LR
     Conflict[ConflictComparison]
   end
 
+  Mock -.->|planned IPC| Services
   Library --> Discovery
   Library --> LibrarySvc
   Vault --> VaultSvc
