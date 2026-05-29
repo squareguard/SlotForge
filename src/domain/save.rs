@@ -26,6 +26,8 @@ pub struct SaveRecord {
     pub origin: SaveOrigin,
     pub label: Option<String>,
     pub note: Option<String>,
+    /// User-chosen tag colour from annotations; when `None`, UI derives a default from `id`.
+    pub label_color: Option<String>,
     pub metadata: SaveMetadata,
     pub archived_at: Option<DateTime<Utc>>,
 }

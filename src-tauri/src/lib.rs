@@ -47,6 +47,7 @@ struct UpdateAnnotationArgs {
     snapshot_id: String,
     label: Option<String>,
     note: Option<String>,
+    label_color: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -129,6 +130,7 @@ fn update_annotation(args: UpdateAnnotationArgs) -> ApiResponse<SnapshotResultDt
         &args.snapshot_id,
         args.label,
         args.note,
+        args.label_color,
     ))
 }
 

@@ -91,14 +91,15 @@ export const slotforgeApi = {
   },
 
   /**
-   * @param {{ snapshotId: string, label?: string | null, note?: string | null }} input
+   * @param {{ snapshotId: string, label?: string | null, note?: string | null, labelColor?: string | null }} input
    */
   updateAnnotation(input) {
-    return invokeApi("update_annotation", {
-      snapshotId: input.snapshotId,
-      label: input.label,
-      note: input.note,
-    });
+    /** @type {Record<string, unknown>} */
+    const args = { snapshotId: input.snapshotId };
+    if ("label" in input) args.label = input.label;
+    if ("note" in input) args.note = input.note;
+    if ("labelColor" in input) args.labelColor = input.labelColor;
+    return invokeApi("update_annotation", args);
   },
 
   /**

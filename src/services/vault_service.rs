@@ -24,6 +24,8 @@ struct SaveAnnotation {
     save_id: String,
     label: Option<String>,
     note: Option<String>,
+    #[serde(default)]
+    label_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,6 +82,7 @@ pub fn backup_active_saves_for_game(game: &GameRecord) -> Result<Vec<SaveRecord>
                 origin: SaveOrigin::Vault,
                 label: None,
                 note: None,
+                label_color: None,
                 metadata: metadata_service::collect_metadata(&destination)?,
                 archived_at: Some(Utc::now()),
             });
@@ -137,6 +140,7 @@ pub fn list_vault_saves_for_game(game: &GameRecord) -> Result<Vec<SaveRecord>> {
             origin: SaveOrigin::Vault,
             label: None,
             note: None,
+            label_color: None,
             metadata,
             archived_at: None,
         });
@@ -209,23 +213,87 @@ pub fn delete_save(request: DeleteRequest) -> Result<()> {
     outcome
 }
 
-pub fn annotate_save(save_id: &str, label: Option<String>, note: Option<String>) -> Result<()> {
+pub fn annotate_save(
+    save_id: &str,
+    label: Option<String>,
+    note: Option<String>,
+    label_color: Option<String>,
+) -> Result<()> {
     let mut registry = load_annotation_registry()?;
 
-    let cleaned_label = label.map(|value| value.trim().to_string());
-    let cleaned_note = note.map(|value| value.trim().to_string());
-    let has_label = cleaned_label.as_deref().map(|v| !v.is_empty()).unwrap_or(false);
-    let has_note = cleaned_note.as_deref().map(|v| !v.is_empty()).unwrap_or(false);
+    let current = registry
+        .entries
+        .iter()
+        .find(|entry| entry.save_id == save_id)
+        .cloned();
+
+    let final_label = match label {
+        Some(value) => {
+            let trimmed = value.trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        }
+        None => current.as_ref().and_then(|entry| entry.label.clone()),
+    };
+
+    let final_note = match note {
+        Some(value) => {
+            let trimmed = value.trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        }
+        None => current.as_ref().and_then(|entry| entry.note.clone()),
+    };
+
+    let final_color = match label_color {
+        Some(value) => {
+            let trimmed = value.trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        }
+        None => current.as_ref().and_then(|entry| entry.label_color.clone()),
+    };
 
     registry.entries.retain(|entry| entry.save_id != save_id);
-    if has_label || has_note {
+    if final_label.is_some() || final_note.is_some() || final_color.is_some() {
         registry.entries.push(SaveAnnotation {
             save_id: save_id.to_string(),
-            label: cleaned_label.filter(|value| !value.is_empty()),
-            note: cleaned_note.filter(|value| !value.is_empty()),
+            label: final_label,
+            note: final_note,
+            label_color: final_color,
         });
     }
 
+    save_annotation_registry(&registry)
+}
+
+pub fn set_label_color(save_id: &str, label_color: &str) -> Result<()> {
+    let trimmed = label_color.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("label color cannot be empty");
+    }
+    let color = trimmed.to_string();
+
+    let mut registry = load_annotation_registry()?;
+    if let Some(entry) = registry.entries.iter_mut().find(|e| e.save_id == save_id) {
+        entry.label_color = Some(color);
+    } else {
+        registry.entries.push(SaveAnnotation {
+            save_id: save_id.to_string(),
+            label: None,
+            note: None,
+            label_color: Some(color),
+        });
+    }
     save_annotation_registry(&registry)
 }
 
@@ -235,6 +303,7 @@ pub fn apply_annotations(mut records: Vec<SaveRecord>) -> Result<Vec<SaveRecord>
         if let Some(annotation) = registry.entries.iter().find(|a| a.save_id == record.id) {
             record.label = annotation.label.clone();
             record.note = annotation.note.clone();
+            record.label_color = annotation.label_color.clone();
         }
     }
     Ok(records)
@@ -418,6 +487,7 @@ mod tests {
             origin: SaveOrigin::Vault,
             label: None,
             note: None,
+            label_color: None,
             metadata: SaveMetadata {
                 modified_at: Some(modified_at),
                 created_at: Some(modified_at),

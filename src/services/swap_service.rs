@@ -340,6 +340,7 @@ fn read_active_save_record(game: &GameRecord, active_path: &Path) -> Result<Save
         origin: SaveOrigin::ActiveDirectory,
         label: None,
         note: None,
+        label_color: None,
         metadata: metadata_service::collect_metadata(active_path)?,
         archived_at: None,
     })
@@ -480,6 +481,7 @@ mod tests {
             origin: SaveOrigin::Vault,
             label: None,
             note: None,
+            label_color: None,
             metadata: SaveMetadata {
                 modified_at: Some(modified_at),
                 created_at: Some(modified_at),

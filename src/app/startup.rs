@@ -153,6 +153,7 @@ fn log_swap_readiness_placeholder() -> Result<()> {
         origin: SaveOrigin::Vault,
         label: None,
         note: None,
+        label_color: None,
         metadata: SaveMetadata {
             modified_at: Some(Utc::now()),
             created_at: Some(Utc::now()),

@@ -99,7 +99,7 @@ pub fn backup_game(game_id: &str, label: Option<String>, note: Option<String>) -
         .clone();
 
     if label.is_some() || note.is_some() {
-        vault_service::annotate_save(&primary.id, label, note)?;
+        vault_service::annotate_save(&primary.id, label, note, None)?;
     }
 
     for record in &records {
@@ -208,8 +208,17 @@ pub fn update_annotation(
     snapshot_id: &str,
     label: Option<String>,
     note: Option<String>,
+    label_color: Option<String>,
 ) -> Result<SnapshotResultDto> {
-    vault_service::annotate_save(snapshot_id, label, note)?;
+    let color_only = label.is_none() && note.is_none() && label_color.is_some();
+    if color_only {
+        vault_service::set_label_color(
+            snapshot_id,
+            label_color.as_deref().context("label color missing")?,
+        )?;
+    } else {
+        vault_service::annotate_save(snapshot_id, label, note, label_color)?;
+    }
     let library = build_library_state()?;
     let snapshot = library
         .vault_by_game_id
@@ -373,6 +382,7 @@ fn list_active_saves(game: &GameRecord) -> Result<Vec<SaveRecord>> {
             origin: SaveOrigin::ActiveDirectory,
             label: None,
             note: None,
+            label_color: None,
             metadata,
             archived_at: None,
         });
@@ -450,6 +460,7 @@ fn snapshot_record_from_dto(game: &GameRecord, snapshot: &SnapshotDto) -> Result
         origin: snapshot.origin.clone(),
         label: snapshot.label.clone(),
         note: snapshot.note.clone(),
+        label_color: Some(snapshot.label_color.clone()),
         metadata: crate::domain::save::SaveMetadata {
             modified_at: snapshot
                 .metadata
@@ -484,6 +495,7 @@ fn read_active_record(game: &GameRecord, active_path: &Path) -> Result<SaveRecor
         origin: SaveOrigin::ActiveDirectory,
         label: None,
         note: None,
+        label_color: None,
         metadata: metadata_service::collect_metadata(active_path)?,
         archived_at: None,
     })

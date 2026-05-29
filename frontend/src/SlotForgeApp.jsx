@@ -509,6 +509,20 @@ export function appReducer(state, action) {
       return { ...state, settingsViewOpen: Boolean(action.payload) };
     }
 
+    case "PATCH_SNAPSHOT": {
+      const { gameId, snapshotId, patch } = action.payload ?? {};
+      if (!gameId || !snapshotId || !patch) return state;
+      const list = state.vaultByGameId[gameId];
+      if (!list) return state;
+      return {
+        ...state,
+        vaultByGameId: {
+          ...state.vaultByGameId,
+          [gameId]: list.map((s) => (s.id === snapshotId ? { ...s, ...patch } : s)),
+        },
+      };
+    }
+
     default:
       return state;
   }
@@ -1094,7 +1108,14 @@ function GameSidebar({
   return (
     <aside className="panel-animate flex h-full min-h-0 w-64 shrink-0 flex-col overflow-hidden border-r border-white/10 bg-bg-panel">
       <div className="density-pad shrink-0 border-b border-white/10">
-        <h1 className="header-bloom font-display text-2xl font-bold text-accent">SlotForge</h1>
+        <div className="flex flex-col items-start gap-1">
+          <img
+            src="/sqg_logo.png"
+            alt="SquareGuard"
+            className="h-2.5 w-auto max-w-full object-contain object-left opacity-90"
+          />
+          <h1 className="header-bloom font-display text-2xl font-bold text-accent">SlotForge</h1>
+        </div>
         <div className="mt-3 flex gap-2">
           <button
             type="button"
@@ -1257,10 +1278,10 @@ function VaultBrowser({
           onChange={(e) => onColorFilter(e.target.value)}
           className="rounded border border-white/10 bg-bg-primary px-2 py-1"
         >
-          <option value="all">Colour</option>
+          <option value="all">All colours</option>
           {LABEL_COLORS.map((c) => (
             <option key={c} value={c}>
-              {c}
+              ● {c}
             </option>
           ))}
         </select>
@@ -1317,7 +1338,7 @@ function SnapshotCard({ snapshot, selected, onSelect, onVerify, verifying, onAnn
   const [expanded, setExpanded] = useState(false);
 
   const saveAnnotation = () => {
-    onAnnotation(snapshot.id, {
+    onAnnotation(snapshot.id, snapshot.gameId, {
       label: labelDraft || null,
       note: noteDraft || null,
     });
@@ -1327,9 +1348,10 @@ function SnapshotCard({ snapshot, selected, onSelect, onVerify, verifying, onAnn
   return (
     <div
       className={[
-        "panel-glow mb-3 w-full rounded border p-3 text-left",
+        "panel-glow mb-3 w-full rounded border border-l-2 p-3 text-left",
         selected ? "is-active border-accent/50" : "border-white/10",
       ].join(" ")}
+      style={{ borderLeftColor: snapshot.labelColor }}
     >
       <button type="button" onClick={onSelect} className="w-full text-left">
         <div className="flex justify-between gap-2">
@@ -1344,6 +1366,7 @@ function SnapshotCard({ snapshot, selected, onSelect, onVerify, verifying, onAnn
             ) : (
               <div
                 className="font-display text-sm font-semibold"
+                style={{ color: snapshot.labelColor }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                   setEditing(true);
@@ -1406,10 +1429,14 @@ function SnapshotCard({ snapshot, selected, onSelect, onVerify, verifying, onAnn
               key={c}
               type="button"
               title="Label colour"
-              onClick={() => onAnnotation(snapshot.id, { labelColor: c })}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (snapshot.labelColor === c) return;
+                onAnnotation(snapshot.id, snapshot.gameId, { labelColor: c });
+              }}
               className={[
-                "h-3 w-3 rounded-full border",
-                snapshot.labelColor === c ? "border-white" : "border-transparent",
+                "h-3 w-3 rounded-full border-2",
+                snapshot.labelColor === c ? "border-white scale-110" : "border-white/20",
               ].join(" ")}
               style={{ background: c }}
             />
@@ -2382,17 +2409,76 @@ function SlotForgeAppInner() {
     pushToast({ type: "success", message: `Verified ${res.data.verifiedCount} snapshot(s).` });
   }, [state.selectedGameId, state.vaultByGameId, applyLibrary, logOp, pushToast]);
 
-  const handleAnnotation = useCallback(
-    async (snapshotId, patch) => {
-      const res = await slotforgeApi.updateAnnotation({ snapshotId, ...patch });
-      if (!res.ok) {
-        pushToast({ type: "error", message: res.error.message });
-        return;
+  const colorSaveTimersRef = useRef(new Map());
+  const annotationChainRef = useRef(Promise.resolve());
+
+  const findGameIdForSnapshot = useCallback(
+    (snapshotId) => {
+      for (const [gameId, list] of Object.entries(state.vaultByGameId)) {
+        if (list.some((s) => s.id === snapshotId)) return gameId;
       }
-      applyLibrary(res.data.library);
-      logOp("annotate", "success", "Annotation saved.", null, snapshotId);
+      return state.selectedGameId;
+    },
+    [state.vaultByGameId, state.selectedGameId]
+  );
+
+  const persistAnnotation = useCallback(
+    (snapshotId, patch) => {
+      annotationChainRef.current = annotationChainRef.current.then(async () => {
+        const res = await slotforgeApi.updateAnnotation({ snapshotId, ...patch });
+        if (!res.ok) {
+          pushToast({ type: "error", message: res.error.message });
+          return;
+        }
+        const isColorOnly =
+          patch.labelColor != null && !("label" in patch) && !("note" in patch);
+        if (isColorOnly) {
+          const snap = res.data.snapshot;
+          dispatch({
+            type: "PATCH_SNAPSHOT",
+            payload: { gameId: snap.gameId, snapshotId: snap.id, patch: snap },
+          });
+        } else {
+          applyLibrary(res.data.library);
+          logOp("annotate", "success", "Annotation saved.", null, snapshotId);
+        }
+      });
     },
     [applyLibrary, logOp, pushToast]
+  );
+
+  const handleAnnotation = useCallback(
+    (snapshotId, gameId, patch) => {
+      const isColorOnly =
+        patch.labelColor != null && !("label" in patch) && !("note" in patch);
+
+      if (isColorOnly) {
+        const resolvedGameId = gameId ?? findGameIdForSnapshot(snapshotId);
+        if (resolvedGameId) {
+          dispatch({
+            type: "PATCH_SNAPSHOT",
+            payload: {
+              gameId: resolvedGameId,
+              snapshotId,
+              patch: { labelColor: patch.labelColor },
+            },
+          });
+        }
+        const existing = colorSaveTimersRef.current.get(snapshotId);
+        if (existing) clearTimeout(existing);
+        colorSaveTimersRef.current.set(
+          snapshotId,
+          setTimeout(() => {
+            colorSaveTimersRef.current.delete(snapshotId);
+            persistAnnotation(snapshotId, patch);
+          }, 300)
+        );
+        return;
+      }
+
+      persistAnnotation(snapshotId, patch);
+    },
+    [findGameIdForSnapshot, persistAnnotation]
   );
 
   const handleDelete = useCallback(async () => {

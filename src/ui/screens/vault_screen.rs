@@ -51,7 +51,7 @@ pub fn annotate_save_action(
     label: Option<String>,
     note: Option<String>,
 ) -> Result<VaultScreenState> {
-    vault_service::annotate_save(save_id, label, note)?;
+    vault_service::annotate_save(save_id, label, note, None)?;
     let mut state = load_state(game)?;
     state.status_message = Some("Save label/note updated.".to_string());
     Ok(state)

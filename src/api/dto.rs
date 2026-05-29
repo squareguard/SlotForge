@@ -181,7 +181,10 @@ pub fn snapshot_to_dto(record: &SaveRecord, integrity: IntegrityStatusDto, files
         metadata: metadata_to_dto(&record.metadata),
         archived_at: record.archived_at.map(|t| t.to_rfc3339()),
         integrity,
-        label_color: label_color_for_id(&record.id),
+        label_color: record
+            .label_color
+            .clone()
+            .unwrap_or_else(|| label_color_for_id(&record.id)),
         file_count: files.len() as u32,
         files,
     }
