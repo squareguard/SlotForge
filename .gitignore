@@ -1,0 +1,137 @@
+# =============================================================================
+# SlotForge — root .gitignore (Rust backend + Vite/React frontend)
+# =============================================================================
+
+# --- Rust --------------------------------------------------------------------
+/target/
+**/*.rs.bk
+# Cargo.lock is committed for this application (reproducible builds).
+
+# --- Node / frontend (Vite, npm) ---------------------------------------------
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+*.tsbuildinfo
+.eslintcache
+.stylelintcache
+.parcel-cache
+.turbo
+.npm
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+.yarn-integrity
+
+# --- Environment variables & secrets -----------------------------------------
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa
+id_rsa.*
+id_dsa
+id_ed25519
+id_ed25519.*
+*.keystore
+credentials.json
+secrets.json
+*.secret
+.auth
+.netrc
+.npmrc.local
+
+# Cloud / CI credential files (never commit)
+.aws/
+.azure/
+.gcloud/
+service-account*.json
+*-credentials.json
+
+# --- Local app config & databases (dev / runtime) ----------------------------
+slotforge-config.json
+config.local.json
+*.local.json
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# --- Logs & diagnostics ------------------------------------------------------
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# --- Test & coverage output --------------------------------------------------
+coverage/
+*.profraw
+*.profdata
+lcov.info
+tarpaulin-report.html
+/cobertura.xml
+/htmlcov/
+.pytest_cache/
+.nyc_output
+
+# --- OS-generated files --------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- Editors & IDEs ----------------------------------------------------------
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln.docstates
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# --- Cursor & local AI tooling -----------------------------------------------
+.cursor/
+.aiassistant/
+
+# --- Misc build / package artifacts ------------------------------------------
+*.orig
+*.rej
+*.patch.bak
+*.bak
+*.tmp
+*.temp
+.cache/
+tmp/
+temp/
+out/
+build/

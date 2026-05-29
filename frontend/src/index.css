@@ -1,0 +1,152 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Rajdhani:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * DARKROOM — default theme (PRD FR-46)
+ * All theme presets write these CSS custom properties on :root at runtime.
+ */
+:root {
+  --accent: #00f5ff;
+  --bg-primary: #0a0a0f;
+  --bg-panel: #12121a;
+  --text-primary: #e8f4f8;
+  --text-dim: #6b7a8f;
+  --danger: #ff2d55;
+  --warning: #ffb800;
+
+  --font-size-base: 16px;
+  --panel-density: comfortable;
+  --scanlines-enabled: 0;
+  --glow-enabled: 1;
+}
+
+html {
+  font-size: var(--font-size-base);
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: "Rajdhani", system-ui, sans-serif;
+  overflow: hidden;
+}
+
+.font-display {
+  font-family: "Rajdhani", system-ui, sans-serif;
+}
+
+.font-mono-data {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Scanline overlay (task 3.8) */
+.scanline-overlay {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  opacity: calc(var(--scanlines-enabled) * 0.12);
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.04) 0px,
+    rgba(255, 255, 255, 0.04) 1px,
+    transparent 2px,
+    transparent 4px
+  );
+}
+
+/* Glow panels when enabled (task 3.8) */
+.panel-glow {
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+html[data-glow="1"] .panel-glow:hover,
+html[data-glow="1"] .panel-glow.is-active {
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* Panel transitions (task 3.9) */
+.panel-animate {
+  animation: panelIn 0.18s ease-out;
+}
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.header-bloom {
+  text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Toast slide-in (task 3.5) */
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.toast-item {
+  animation: toastIn 0.2s ease-out;
+}
+
+/* Glitch modal entrance (task 5.8 prep) */
+@keyframes glitchIn {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) skewX(0deg);
+  }
+  20% {
+    opacity: 1;
+    transform: translate(-3px, 1px) skewX(-2deg);
+  }
+  40% {
+    transform: translate(3px, -1px) skewX(2deg);
+  }
+  60% {
+    transform: translate(-2px, 0) skewX(-1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) skewX(0deg);
+  }
+}
+.modal-glitch {
+  animation: glitchIn 0.28s ease-out;
+}
+
+/* Progress bar flicker (task 5.1 prep) */
+@keyframes flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+.progress-flicker {
+  animation: flicker 0.35s ease-in-out infinite;
+}
+
+[data-density="compact"] .density-pad {
+  padding: 0.5rem;
+}
+[data-density="comfortable"] .density-pad {
+  padding: 1rem;
+}
