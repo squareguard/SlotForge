@@ -20,12 +20,15 @@ import {
 import {
   ChevronLeft,
   ChevronRight,
+  EyeOff,
+  FolderPlus,
   HardDrive,
   Plus,
   RefreshCw,
   Search,
   Settings,
   ShieldCheck,
+  Trash2,
   X,
 } from "lucide-react";
 
@@ -1021,7 +1024,68 @@ function AppShell({ sidebar, main, detail, statusBar, scanlines, overlay }) {
   );
 }
 
-function GameSidebar({ games, query, onQuery, selectedId, onSelect, onScan, scanning, onAdd, onSettings }) {
+/**
+ * @typedef {Object} IgnoredEntry
+ * @property {string} path
+ * @property {string | null} name
+ * @property {string} ignoredAt ISO-8601 UTC
+ */
+
+function GameContextMenu({ x, y, gameName, onDelete, onClose }) {
+  const menuRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+
+  useEffect(() => {
+    const handlePointer = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        onClose();
+      }
+    };
+    const handleKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", handlePointer);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={menuRef}
+      role="menu"
+      className="fixed z-50 min-w-[10rem] rounded border border-white/15 bg-bg-panel py-1 shadow-lg"
+      style={{ left: x, top: y }}
+    >
+      <button
+        type="button"
+        role="menuitem"
+        onClick={onDelete}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left font-mono text-xs text-danger hover:bg-danger/10"
+      >
+        <Trash2 size={14} />
+        Delete
+      </button>
+      <p className="border-t border-white/10 px-3 py-2 font-mono text-[10px] text-text-dim">
+        Removes &quot;{gameName}&quot; from SlotForge only. Save files on disk are not deleted.
+      </p>
+    </div>
+  );
+}
+
+function GameSidebar({
+  games,
+  query,
+  onQuery,
+  selectedId,
+  onSelect,
+  onScan,
+  scanning,
+  onAdd,
+  onSettings,
+  onGameContextMenu,
+}) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return q ? games.filter((g) => g.name.toLowerCase().includes(q)) : games;
@@ -1066,6 +1130,10 @@ function GameSidebar({ games, query, onQuery, selectedId, onSelect, onScan, scan
             key={g.id}
             type="button"
             onClick={() => onSelect(g.id)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              onGameContextMenu(g, e);
+            }}
             className={[
               "panel-glow mb-2 flex w-full items-center gap-3 rounded border p-2 text-left",
               g.id === selectedId ? "is-active border-accent/60 bg-accent/5" : "border-white/10",
@@ -1715,7 +1783,153 @@ function DeleteConfirmModal({ open, snapshot, onClose, onConfirm, loading }) {
   );
 }
 
-function ThemeEditor({ onClose, onImportError, onImportSuccess }) {
+function IgnoredGamesModal({ open, onClose }) {
+  /** @type {[IgnoredEntry[], function]} */
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newPath, setNewPath] = useState("");
+  const [newName, setNewName] = useState("");
+  const { pushToast } = useToast();
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    const res = await slotforgeApi.listIgnoredGames();
+    setLoading(false);
+    if (!res.ok) {
+      pushToast({ type: "error", message: res.error.message });
+      return;
+    }
+    setEntries(res.data.entries ?? []);
+  }, [pushToast]);
+
+  useEffect(() => {
+    if (!open) return;
+    refresh();
+  }, [open, refresh]);
+
+  const handlePickFolder = async () => {
+    const picked = await pickSaveDirectory();
+    if (picked) setNewPath(picked);
+  };
+
+  const handleAdd = async () => {
+    const path = newPath.trim();
+    if (!path) {
+      pushToast({ type: "error", message: "Choose a folder path to ignore." });
+      return;
+    }
+    setAdding(true);
+    const res = await slotforgeApi.addIgnoredPath({
+      path,
+      name: newName.trim() || null,
+    });
+    setAdding(false);
+    if (!res.ok) {
+      pushToast({ type: "error", message: res.error.message });
+      return;
+    }
+    setEntries(res.data.entries ?? []);
+    setNewPath("");
+    setNewName("");
+    pushToast({ type: "success", message: "Path added to ignored list." });
+  };
+
+  const handleRemove = async (path) => {
+    const res = await slotforgeApi.removeIgnoredPath({ path });
+    if (!res.ok) {
+      pushToast({ type: "error", message: res.error.message });
+      return;
+    }
+    setEntries(res.data.entries ?? []);
+    pushToast({ type: "success", message: "Removed from ignored list. Rescan to show games again." });
+  };
+
+  if (!open) return null;
+
+  return (
+    <ModalBackdrop onClose={onClose}>
+      <div className="flex max-h-[min(80vh,32rem)] flex-col">
+        <h3 className="header-bloom font-display text-lg font-semibold text-accent">Ignored games</h3>
+        <p className="mt-2 font-mono text-xs text-text-dim">
+          Games and folders listed here are excluded from scans. Your save files on disk are never deleted.
+        </p>
+        <div className="mt-4 min-h-0 flex-1 overflow-y-auto rounded border border-white/10">
+          {loading ? (
+            <p className="p-4 font-mono text-xs text-text-dim">Loading…</p>
+          ) : entries.length === 0 ? (
+            <p className="p-4 font-mono text-xs text-text-dim">No ignored games or folders yet.</p>
+          ) : (
+            <ul className="divide-y divide-white/10">
+              {entries.map((entry) => (
+                <li key={entry.path} className="flex items-start gap-2 p-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-display text-sm font-semibold">
+                      {entry.name ?? entry.path.split(/[/\\]/).pop() ?? entry.path}
+                    </div>
+                    <div className="break-all font-mono text-[10px] text-text-dim">{entry.path}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(entry.path)}
+                    className="shrink-0 rounded border border-white/15 px-2 py-1 font-mono text-[10px] text-text-dim hover:border-danger/40 hover:text-danger"
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="mt-4 shrink-0 border-t border-white/10 pt-4">
+          <p className="mb-2 font-mono text-xs text-text-dim">Add folder or game save directory</p>
+          <label className="mb-2 block font-mono text-xs text-text-dim">
+            Display name (optional)
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="e.g. Old RPG saves"
+              className="mt-1 w-full rounded border border-white/10 bg-bg-primary px-2 py-2"
+            />
+          </label>
+          <label className="mb-2 block font-mono text-xs text-text-dim">
+            Path
+            <div className="mt-1 flex gap-2">
+              <input
+                value={newPath}
+                onChange={(e) => setNewPath(e.target.value)}
+                placeholder="C:\Users\…\Saved Games\…"
+                className="min-w-0 flex-1 rounded border border-white/10 bg-bg-primary px-2 py-2"
+              />
+              <button
+                type="button"
+                onClick={handlePickFolder}
+                className="flex shrink-0 items-center gap-1 rounded border border-white/15 px-2 py-2 font-mono text-[10px]"
+              >
+                <FolderPlus size={14} /> Browse
+              </button>
+            </div>
+          </label>
+          <button
+            type="button"
+            disabled={adding || !newPath.trim()}
+            onClick={handleAdd}
+            className="rounded border border-accent/40 px-3 py-1 font-mono text-xs text-accent disabled:opacity-40"
+          >
+            {adding ? "Adding…" : "Add to ignore list"}
+          </button>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button type="button" onClick={onClose} className="rounded border border-white/15 px-3 py-1 font-mono text-xs">
+            Close
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+function ThemeEditor({ onClose, onOpenIgnoredGames, onImportError, onImportSuccess }) {
   const {
     theme,
     applyPreset,
@@ -1745,13 +1959,22 @@ function ThemeEditor({ onClose, onImportError, onImportSuccess }) {
     <div className="absolute inset-0 z-40 flex bg-black/60">
       <div className="m-auto flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded border border-white/15 bg-bg-panel">
         <div className="flex items-center justify-between border-b border-white/10 density-pad">
-          <h2 className="header-bloom font-display text-xl font-semibold">Settings · Theme</h2>
+          <h2 className="header-bloom font-display text-xl font-semibold">Settings</h2>
           <button type="button" onClick={onClose} aria-label="Close settings">
             <X size={18} />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto density-pad font-mono text-xs">
-          <p className="mb-2 text-text-dim">Presets</p>
+          <p className="mb-2 text-text-dim">Library</p>
+          <button
+            type="button"
+            onClick={onOpenIgnoredGames}
+            className="mb-4 flex w-full items-center justify-center gap-2 rounded border border-white/15 py-2 text-text-primary hover:border-accent/40"
+          >
+            <EyeOff size={14} className="text-accent" />
+            Ignored games
+          </button>
+          <p className="mb-2 text-text-dim">Theme · Presets</p>
           <div className="mb-4 flex flex-wrap gap-2">
             {Object.values(THEME_PRESETS).map((preset) => (
               <button
@@ -1908,6 +2131,11 @@ function SlotForgeAppInner() {
   const [integrityFilter, setIntegrityFilter] = useState("all");
   const [colorFilter, setColorFilter] = useState("all");
   const [rescanningActive, setRescanningActive] = useState(false);
+  const [ignoredGamesOpen, setIgnoredGamesOpen] = useState(false);
+  const [gameContextMenu, setGameContextMenu] = useState(
+    /** @type {{ gameId: string, gameName: string, x: number, y: number } | null} */ (null)
+  );
+  const [removingGame, setRemovingGame] = useState(false);
 
   const selectedGame = useMemo(
     () => state.games.find((g) => g.id === state.selectedGameId) ?? null,
@@ -2186,6 +2414,29 @@ function SlotForgeAppInner() {
     pushToast({ type: "success", message: "Snapshot deleted." });
   }, [selectedSnapshot, applyLibrary, logOp, pushToast]);
 
+  const handleRemoveGame = useCallback(
+    async (gameId) => {
+      setGameContextMenu(null);
+      setRemovingGame(true);
+      const res = await slotforgeApi.ignoreGameFromLibrary({ gameId });
+      setRemovingGame(false);
+      if (!res.ok) {
+        pushToast({ type: "error", message: res.error.message });
+        return;
+      }
+      applyLibrary(res.data.library);
+      const stillSelected = res.data.library.games.some((g) => g.id === state.selectedGameId);
+      if (!stillSelected) {
+        dispatch({ type: "SELECT_GAME", payload: res.data.library.games[0]?.id ?? null });
+      }
+      pushToast({
+        type: "success",
+        message: "Game removed from library and added to ignored list. Files on disk were not deleted.",
+      });
+    },
+    [applyLibrary, pushToast, state.selectedGameId]
+  );
+
   const sidebarCollapsed = state.ui.panels.sidebarCollapsed;
   const detailCollapsed = state.ui.panels.detailCollapsed;
   const canRollback = Boolean(state.operations.lastSwap);
@@ -2214,6 +2465,14 @@ function SlotForgeAppInner() {
               scanning={state.ui.loading.scanning}
               onAdd={() => dispatch({ type: "OPEN_MODAL", payload: "addGame" })}
               onSettings={() => dispatch({ type: "SET_SETTINGS_OPEN", payload: true })}
+              onGameContextMenu={(game, e) => {
+                setGameContextMenu({
+                  gameId: game.id,
+                  gameName: game.name,
+                  x: e.clientX,
+                  y: e.clientY,
+                });
+              }}
             />
             <PanelCollapseButton
               collapsed={false}
@@ -2320,9 +2579,25 @@ function SlotForgeAppInner() {
             onConfirm={handleDelete}
             loading={state.ui.loading.deleting}
           />
+          {gameContextMenu ? (
+            <GameContextMenu
+              x={gameContextMenu.x}
+              y={gameContextMenu.y}
+              gameName={gameContextMenu.gameName}
+              onClose={() => setGameContextMenu(null)}
+              onDelete={() => {
+                if (!removingGame) handleRemoveGame(gameContextMenu.gameId);
+              }}
+            />
+          ) : null}
+          <IgnoredGamesModal open={ignoredGamesOpen} onClose={() => setIgnoredGamesOpen(false)} />
           {state.settingsViewOpen ? (
             <ThemeEditor
               onClose={() => dispatch({ type: "SET_SETTINGS_OPEN", payload: false })}
+              onOpenIgnoredGames={() => {
+                dispatch({ type: "SET_SETTINGS_OPEN", payload: false });
+                setIgnoredGamesOpen(true);
+              }}
               onImportError={(msg) => pushToast({ type: "error", message: msg })}
               onImportSuccess={() => pushToast({ type: "success", message: "Theme imported." })}
             />

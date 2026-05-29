@@ -4,13 +4,15 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use crate::api::dto::{
-    self, AddGameResultDto, BackupResultDto, IntegrityStatusDto, LibraryStateDto, RestoreResultDto,
-    SnapshotDto, SnapshotResultDto, VerifyAllResultDto,
+    self, AddGameResultDto, BackupResultDto, IgnoreGameResultDto, IgnoredListDto,
+    IntegrityStatusDto, LibraryStateDto, RestoreResultDto, SnapshotDto, SnapshotResultDto,
+    VerifyAllResultDto,
 };
 use crate::api::swap_session::{self, LastSwapSession};
 use crate::domain::conflict::ResolutionChoice;
 use crate::domain::game::GameRecord;
 use crate::domain::save::{SaveOrigin, SaveRecord};
+use crate::services::blacklist_service;
 use crate::services::config_service;
 use crate::services::discovery_service::{self, DiscoveredSaveFile};
 use crate::services::library_service;
@@ -242,6 +244,37 @@ pub fn delete_snapshot(snapshot_id: &str, confirmed: bool) -> Result<LibraryStat
 
 pub fn scan_save_directory(path: &str) -> Result<Vec<DiscoveredSaveFile>> {
     discovery_service::scan_save_files_in_directory(Path::new(path.trim()))
+}
+
+pub fn list_ignored_games() -> Result<IgnoredListDto> {
+    let entries = blacklist_service::list_ignored()?
+        .into_iter()
+        .map(|entry| dto::ignored_entry_to_dto(&entry))
+        .collect();
+    Ok(IgnoredListDto { entries })
+}
+
+pub fn add_ignored_path(path: &str, name: Option<String>) -> Result<IgnoredListDto> {
+    blacklist_service::add_ignored_path(path, name)?;
+    list_ignored_games()
+}
+
+pub fn remove_ignored_path(path: &str) -> Result<IgnoredListDto> {
+    blacklist_service::remove_ignored_path(path)?;
+    list_ignored_games()
+}
+
+pub fn ignore_game_from_library(game_id: &str) -> Result<IgnoreGameResultDto> {
+    let game = find_game(game_id)?;
+    let entry = blacklist_service::ignore_game(&game)?;
+    if game.source == crate::domain::game::GameSource::UserAdded {
+        let _ = library_service::remove_manual_game(game_id);
+    }
+    let library = build_library_state()?;
+    Ok(IgnoreGameResultDto {
+        library,
+        entry: dto::ignored_entry_to_dto(&entry),
+    })
 }
 
 pub fn destructive_restore_warning(snapshot_id: &str) -> Result<String> {

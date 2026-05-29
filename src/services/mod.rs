@@ -1,3 +1,4 @@
+pub mod blacklist_service;
 pub mod discovery_service;
 pub mod library_service;
 pub mod vault_service;

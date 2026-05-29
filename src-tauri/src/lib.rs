@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use slotforge::api::{
-    from_anyhow, AddGameResultDto, ApiResponse, BackupResultDto, LibraryStateDto, RestoreResultDto,
-    SnapshotResultDto, VerifyAllResultDto,
+    from_anyhow, AddGameResultDto, ApiResponse, BackupResultDto, IgnoreGameResultDto,
+    IgnoredListDto, LibraryStateDto, RestoreResultDto, SnapshotResultDto, VerifyAllResultDto,
 };
 use slotforge::domain::conflict::ResolutionChoice;
 use slotforge::services::discovery_service::DiscoveredSaveFile;
@@ -59,6 +59,19 @@ struct DeleteSnapshotArgs {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ScanDirectoryArgs {
+    path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AddIgnoredPathArgs {
+    path: String,
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IgnoredPathArgs {
     path: String,
 }
 
@@ -137,6 +150,26 @@ fn destructive_restore_warning(args: SnapshotIdArgs) -> ApiResponse<String> {
     from_anyhow(slotforge::api::destructive_restore_warning(&args.snapshot_id))
 }
 
+#[tauri::command]
+fn list_ignored_games() -> ApiResponse<IgnoredListDto> {
+    from_anyhow(slotforge::api::list_ignored_games())
+}
+
+#[tauri::command]
+fn add_ignored_path(args: AddIgnoredPathArgs) -> ApiResponse<IgnoredListDto> {
+    from_anyhow(slotforge::api::add_ignored_path(&args.path, args.name))
+}
+
+#[tauri::command]
+fn remove_ignored_path(args: IgnoredPathArgs) -> ApiResponse<IgnoredListDto> {
+    from_anyhow(slotforge::api::remove_ignored_path(&args.path))
+}
+
+#[tauri::command]
+fn ignore_game_from_library(args: GameIdArgs) -> ApiResponse<IgnoreGameResultDto> {
+    from_anyhow(slotforge::api::ignore_game_from_library(&args.game_id))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -154,6 +187,10 @@ pub fn run() {
             delete_snapshot,
             scan_save_directory,
             destructive_restore_warning,
+            list_ignored_games,
+            add_ignored_path,
+            remove_ignored_path,
+            ignore_game_from_library,
         ])
         .run(tauri::generate_context!())
         .expect("error while running SlotForge desktop");

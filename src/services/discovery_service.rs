@@ -10,6 +10,7 @@ use walkdir::WalkDir;
 use crate::domain::game::{GameRecord, GameSource};
 use crate::platform::fs::normalize_and_dedup_paths;
 use crate::platform::path_defaults::default_scan_paths;
+use crate::services::blacklist_service;
 use crate::services::config_service;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,9 +42,18 @@ pub fn discover_games_from_roots(roots: &[PathBuf]) -> Result<DiscoverySummary> 
         if !root.exists() || !root.is_dir() {
             continue;
         }
+        if blacklist_service::is_path_ignored(root).unwrap_or(false) {
+            continue;
+        }
 
         for game_dir in collect_candidate_game_dirs(root) {
+            if blacklist_service::is_path_ignored(&game_dir).unwrap_or(false) {
+                continue;
+            }
             if let Some(record) = game_record_from_dir(&game_dir) {
+                if blacklist_service::is_path_ignored(&record.active_save_dir).unwrap_or(false) {
+                    continue;
+                }
                 discovered.entry(record.id.clone()).or_insert(record);
             }
         }

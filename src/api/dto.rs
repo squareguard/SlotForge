@@ -126,6 +126,27 @@ pub struct VerifyAllResultDto {
     pub verified_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct IgnoredEntryDto {
+    pub path: String,
+    pub name: Option<String>,
+    pub ignored_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct IgnoredListDto {
+    pub entries: Vec<IgnoredEntryDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct IgnoreGameResultDto {
+    pub library: LibraryStateDto,
+    pub entry: IgnoredEntryDto,
+}
+
 pub fn metadata_to_dto(metadata: &SaveMetadata) -> SaveMetadataDto {
     SaveMetadataDto {
         modified_at: metadata.modified_at.map(|t| t.to_rfc3339()),
@@ -209,4 +230,12 @@ pub fn game_to_dto(
 
 pub fn discovered_to_relative_paths(files: &[DiscoveredSaveFile]) -> Vec<String> {
     files.iter().map(|f| f.relative_path.clone()).collect()
+}
+
+pub fn ignored_entry_to_dto(entry: &crate::services::blacklist_service::IgnoredEntry) -> IgnoredEntryDto {
+    IgnoredEntryDto {
+        path: path_to_string(&entry.path),
+        name: entry.name.clone(),
+        ignored_at: entry.ignored_at.to_rfc3339(),
+    }
 }

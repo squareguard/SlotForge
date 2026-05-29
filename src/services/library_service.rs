@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::game::{GameRecord, GameSource};
 use crate::platform::fs::{ensure_directory, resolve_path};
+use crate::services::blacklist_service;
 use crate::services::discovery_service::DiscoverySummary;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -50,7 +51,7 @@ pub fn build_canonical_library(discovery: DiscoverySummary) -> Result<Vec<GameRe
 
     let mut merged: Vec<GameRecord> = by_identity.into_values().collect();
     merged.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    Ok(merged)
+    blacklist_service::filter_games(merged)
 }
 
 pub fn add_manual_game(name: &str, raw_save_dir: &str) -> Result<GameRecord> {

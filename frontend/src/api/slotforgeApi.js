@@ -16,9 +16,15 @@ import { open } from "@tauri-apps/plugin-dialog";
  * @param {Record<string, unknown>} [args]
  * @returns {Promise<ApiOk<T> | ApiFail>}
  */
-async function invokeApi(command, args = {}) {
+async function invokeApi(command, argValues = {}) {
   try {
-    return await invoke(command, args);
+    // Tauri commands take a single struct parameter named `args` on the Rust side;
+    // the invoke payload must use that key (not flatten fields at the top level).
+    const payload =
+      argValues && typeof argValues === "object" && Object.keys(argValues).length > 0
+        ? { args: argValues }
+        : {};
+    return await invoke(command, payload);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, error: { code: "IPC", message } };
@@ -103,6 +109,34 @@ export const slotforgeApi = {
       snapshotId: input.snapshotId,
       confirmed: input.confirmed ?? true,
     });
+  },
+
+  listIgnoredGames() {
+    return invokeApi("list_ignored_games");
+  },
+
+  /**
+   * @param {{ path: string, name?: string | null }} input
+   */
+  addIgnoredPath(input) {
+    return invokeApi("add_ignored_path", {
+      path: input.path,
+      name: input.name ?? null,
+    });
+  },
+
+  /**
+   * @param {{ path: string }} input
+   */
+  removeIgnoredPath(input) {
+    return invokeApi("remove_ignored_path", { path: input.path });
+  },
+
+  /**
+   * @param {{ gameId: string }} input
+   */
+  ignoreGameFromLibrary(input) {
+    return invokeApi("ignore_game_from_library", { gameId: input.gameId });
   },
 };
 
