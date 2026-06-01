@@ -17,17 +17,9 @@ export class ErrorBoundary extends Component {
   render() {
     if (this.state.error) {
       return (
-        <div
-          style={{
-            minHeight: "100vh",
-            padding: "2rem",
-            background: "#0a0a0f",
-            color: "#ff2d55",
-            fontFamily: "system-ui, sans-serif",
-          }}
-        >
-          <h1 style={{ color: "#00f5ff", marginTop: 0 }}>SlotForge failed to start</h1>
-          <pre style={{ whiteSpace: "pre-wrap", color: "#e8f4f8" }}>{String(this.state.error)}</pre>
+        <div className="flex min-h-screen flex-col bg-bg-primary p-8 text-danger font-mono text-sm">
+          <h1 className="font-display text-lg font-semibold text-accent">SlotForge failed to start</h1>
+          <pre className="mt-4 whitespace-pre-wrap text-text-primary">{String(this.state.error)}</pre>
         </div>
       );
     }

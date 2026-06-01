@@ -559,7 +559,7 @@ export const THEME_PRESET_DARKROOM = {
   fontSize: 16,
   density: "comfortable",
   scanlinesEnabled: false,
-  glowEnabled: true,
+  glowEnabled: false,
 };
 
 /** @type {ThemePreset} */
@@ -577,7 +577,7 @@ export const THEME_PRESET_MATRIX = {
   fontSize: 16,
   density: "comfortable",
   scanlinesEnabled: true,
-  glowEnabled: true,
+  glowEnabled: false,
 };
 
 /** @type {ThemePreset} */
@@ -613,7 +613,7 @@ export const THEME_PRESET_NEON_TOKYO = {
   fontSize: 16,
   density: "comfortable",
   scanlinesEnabled: true,
-  glowEnabled: true,
+  glowEnabled: false,
 };
 
 /** @type {ThemePreset} */
@@ -631,7 +631,7 @@ export const THEME_PRESET_BLOODLINE = {
   fontSize: 16,
   density: "comfortable",
   scanlinesEnabled: false,
-  glowEnabled: true,
+  glowEnabled: false,
 };
 
 /** @type {Record<string, ThemePreset>} */
@@ -934,6 +934,12 @@ function useToast() {
   return ctx;
 }
 
+function toastSurfaceClass(type) {
+  if (type === "error") return "border-danger/50 text-danger";
+  if (type === "success") return "border-success/50 text-success";
+  return "border-white/20 text-text-primary";
+}
+
 function ToastSystem({ toasts, onDismiss }) {
   return (
     <div className="pointer-events-none fixed bottom-12 right-4 z-[60] flex max-w-sm flex-col gap-2">
@@ -941,13 +947,18 @@ function ToastSystem({ toasts, onDismiss }) {
         <div
           key={t.id}
           className={[
-            "toast-item pointer-events-auto flex items-start justify-between gap-3 rounded border px-3 py-2 font-mono text-sm",
-            t.type === "error" ? "border-danger/50 text-danger bg-bg-panel" : "border-accent/40 text-accent bg-bg-panel",
+            "toast-item pointer-events-auto flex items-start justify-between gap-3 rounded-lg border bg-bg-panel px-3 py-2 font-mono text-sm",
+            toastSurfaceClass(t.type),
           ].join(" ")}
         >
           <span>{t.message}</span>
-          <button type="button" onClick={() => onDismiss(t.id)} aria-label="Dismiss">
-            <X size={14} />
+          <button
+            type="button"
+            onClick={() => onDismiss(t.id)}
+            aria-label="Dismiss"
+            className="ui-focus-ring shrink-0 rounded p-0.5"
+          >
+            <X size={16} />
           </button>
         </div>
       ))}
@@ -963,7 +974,7 @@ function StatusBar({ lastOp, totalVaultBytes, activeGameName }) {
       </span>
       <span className="flex gap-4">
         <span className="flex items-center gap-1">
-          <HardDrive size={12} /> {formatBytes(totalVaultBytes)}
+          <HardDrive size={16} /> {formatBytes(totalVaultBytes)}
         </span>
         <span>Active: {activeGameName ?? "—"}</span>
       </span>
@@ -981,9 +992,9 @@ function IntegrityBadge({ integrity, loading }) {
   return (
     <span
       className={[
-        "rounded border px-2 py-0.5 font-mono text-xs",
+        "rounded-md border px-2 py-0.5 font-mono text-xs",
         integrity === IntegrityStatus.Verified
-          ? "border-accent/40 text-accent"
+          ? "border-success/40 text-success"
           : integrity === IntegrityStatus.Corrupted
             ? "border-danger/40 text-danger"
             : "border-white/15 text-text-dim",
@@ -998,8 +1009,8 @@ function IntegrityBadge({ integrity, loading }) {
 function ProgressBar({ progress }) {
   const pct = Math.max(0, Math.min(100, progress));
   return (
-    <div className="h-2 w-full rounded bg-black/40">
-      <div className="progress-flicker h-full bg-accent transition-all" style={{ width: `${pct}%` }} />
+    <div className="h-2 w-full rounded-md bg-black/40">
+      <div className="h-full bg-accent transition-[width] duration-200 ease-out" style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -1050,19 +1061,19 @@ function GameContextMenu({ x, y, gameName, onDelete, onClose }) {
     <div
       ref={menuRef}
       role="menu"
-      className="fixed z-50 min-w-[10rem] rounded border border-white/15 bg-bg-panel py-1 shadow-lg"
+      className="fixed z-50 min-w-[10rem] rounded-lg border border-white/15 bg-bg-panel py-1 shadow-elevation"
       style={{ left: x, top: y }}
     >
       <button
         type="button"
         role="menuitem"
         onClick={onDelete}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left font-mono text-xs text-danger hover:bg-danger/10"
+        className="ui-menu-item text-danger hover:bg-danger/10"
       >
-        <Trash2 size={14} />
+        <Trash2 size={16} />
         Delete
       </button>
-      <p className="border-t border-white/10 px-3 py-2 font-mono text-[10px] text-text-dim">
+      <p className="border-t border-white/10 px-3 py-2 font-mono text-xs text-text-dim">
         Removes &quot;{gameName}&quot; from SlotForge only. Save files on disk are not deleted.
       </p>
     </div>
@@ -1087,7 +1098,7 @@ function GameSidebar({
   }, [games, query]);
 
   return (
-    <aside className="panel-animate flex h-full min-h-0 w-64 shrink-0 flex-col overflow-hidden border-r border-white/10 bg-bg-panel">
+    <aside className="flex h-full min-h-0 w-64 shrink-0 flex-col overflow-hidden border-r border-white/10 bg-bg-panel">
       <div className="density-pad shrink-0 border-b border-white/10">
         <div className="flex flex-col items-start gap-1">
           <img
@@ -1095,31 +1106,31 @@ function GameSidebar({
             alt="SquareGuard"
             className="h-2.5 w-auto max-w-full object-contain object-left opacity-90"
           />
-          <h1 className="header-bloom font-display text-2xl font-bold text-accent">SlotForge</h1>
+          <h1 className="font-display text-2xl font-semibold text-accent">SlotForge</h1>
         </div>
         <div className="mt-3 flex gap-2">
           <button
             type="button"
             onClick={onScan}
             disabled={scanning}
-            className="flex flex-1 items-center justify-center gap-1 rounded border border-accent/40 py-1.5 font-mono text-xs text-accent disabled:opacity-50"
+            className="ui-btn flex flex-1 items-center justify-center gap-1 border-accent/40 py-1.5 text-accent disabled:opacity-50"
           >
-            <RefreshCw size={12} className={scanning ? "animate-spin" : ""} /> Scan
+            <RefreshCw size={16} className={scanning ? "animate-spin" : ""} /> Scan
           </button>
-          <button type="button" onClick={onAdd} className="rounded border border-white/15 p-2 text-text-dim">
-            <Plus size={14} />
+          <button type="button" onClick={onAdd} className="ui-icon-btn" aria-label="Add game">
+            <Plus size={16} />
           </button>
-          <button type="button" onClick={onSettings} className="rounded border border-white/15 p-2 text-text-dim">
-            <Settings size={14} />
+          <button type="button" onClick={onSettings} className="ui-icon-btn" aria-label="Settings">
+            <Settings size={16} />
           </button>
         </div>
         <div className="relative mt-3">
-          <Search size={14} className="absolute left-2 top-2.5 text-text-dim" />
+          <Search size={16} className="absolute left-2 top-2 text-text-dim" />
           <input
             value={query}
             onChange={(e) => onQuery(e.target.value)}
             placeholder="Filter games…"
-            className="w-full rounded border border-white/10 bg-bg-primary py-2 pl-8 font-mono text-xs outline-none focus:border-accent/50"
+            className="ui-input w-full py-2 pl-8"
           />
         </div>
       </div>
@@ -1137,16 +1148,16 @@ function GameSidebar({
               onGameContextMenu(g, e);
             }}
             className={[
-              "panel-glow mb-2 flex w-full items-center gap-3 rounded border p-2 text-left",
+              "ui-panel-interactive mb-2 flex w-full items-center gap-3 p-2 text-left",
               g.id === selectedId ? "is-active border-accent/60 bg-accent/5" : "border-white/10",
             ].join(" ")}
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-gradient-to-br from-accent/30 to-bg-primary font-display text-sm font-bold text-accent">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-white/10 bg-accent/10 font-display text-sm font-semibold text-accent">
               {gameInitials(g.name)}
             </div>
             <div className="min-w-0">
               <div className="truncate font-display text-sm font-semibold">{g.name}</div>
-              <div className="font-mono text-[10px] text-text-dim">Backup: {formatWhen(g.lastBackedUpAt)}</div>
+              <div className="font-mono text-xs text-text-dim">Backup: {formatWhen(g.lastBackedUpAt)}</div>
             </div>
           </button>
         ))}
@@ -1199,9 +1210,9 @@ function VaultBrowser({
   const vaultList = sorted.filter((s) => s.origin === SaveOrigin.Vault);
 
   return (
-    <main className="panel-animate flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="density-pad flex shrink-0 items-center justify-between border-b border-white/10">
-        <h2 className="header-bloom font-display text-xl font-semibold">
+        <h2 className="font-display text-xl font-semibold">
           {game ? `${game.name} Vault` : "Vault"}
         </h2>
         <div className="flex gap-2">
@@ -1209,7 +1220,7 @@ function VaultBrowser({
             type="button"
             disabled={!game || rescanningActive}
             onClick={onRescanActive}
-            className="rounded border border-white/15 px-3 py-1 font-mono text-xs disabled:opacity-40"
+            className="ui-btn border-white/15 px-3 py-1 disabled:opacity-40"
           >
             {rescanningActive ? "Scanning…" : "Rescan folder"}
           </button>
@@ -1217,7 +1228,7 @@ function VaultBrowser({
             type="button"
             disabled={!game || batchVerifying}
             onClick={onVerifyAll}
-            className="rounded border border-white/15 px-3 py-1 font-mono text-xs disabled:opacity-40"
+            className="ui-btn border-white/15 px-3 py-1 disabled:opacity-40"
           >
             {batchVerifying ? "Verifying…" : "Verify all"}
           </button>
@@ -1225,14 +1236,14 @@ function VaultBrowser({
             type="button"
             disabled={!game}
             onClick={onBackup}
-            className="rounded border border-accent/50 px-3 py-1 font-mono text-xs text-accent disabled:opacity-40"
+            className="ui-btn border-accent/50 px-3 py-1 text-accent disabled:opacity-40"
           >
             Backup Now
           </button>
         </div>
       </div>
       <div className="density-pad flex shrink-0 flex-wrap gap-2 border-b border-white/10 font-mono text-xs">
-        <select value={sort} onChange={(e) => onSort(e.target.value)} className="rounded border border-white/10 bg-bg-primary px-2 py-1">
+        <select value={sort} onChange={(e) => onSort(e.target.value)} className="ui-select">
           <option value="date-desc">Newest</option>
           <option value="date-asc">Oldest</option>
           <option value="label">Label</option>
@@ -1242,12 +1253,12 @@ function VaultBrowser({
           value={labelFilter}
           onChange={(e) => onLabelFilter(e.target.value)}
           placeholder="Label"
-          className="rounded border border-white/10 bg-bg-primary px-2 py-1"
+          className="ui-select"
         />
         <select
           value={integrityFilter}
           onChange={(e) => onIntegrityFilter(e.target.value)}
-          className="rounded border border-white/10 bg-bg-primary px-2 py-1"
+          className="ui-select"
         >
           <option value="all">All</option>
           <option value="verified">Verified</option>
@@ -1257,7 +1268,7 @@ function VaultBrowser({
         <select
           value={colorFilter}
           onChange={(e) => onColorFilter(e.target.value)}
-          className="rounded border border-white/10 bg-bg-primary px-2 py-1"
+          className="ui-select"
         >
           <option value="all">All colours</option>
           {LABEL_COLORS.map((c) => (
@@ -1277,7 +1288,7 @@ function VaultBrowser({
         ) : null}
         {activeList.length > 0 ? (
           <>
-            <h3 className="mb-2 font-mono text-[10px] uppercase tracking-wider text-accent">Active saves</h3>
+            <h3 className="mb-2 font-mono text-xs uppercase tracking-wider text-accent">Active saves</h3>
             {activeList.map((snap) => (
               <SnapshotCard
                 key={snap.id}
@@ -1293,7 +1304,7 @@ function VaultBrowser({
         ) : null}
         {vaultList.length > 0 ? (
           <>
-            <h3 className="mb-2 mt-4 font-mono text-[10px] uppercase tracking-wider text-text-dim">Vault backups</h3>
+            <h3 className="mb-2 mt-4 font-mono text-xs uppercase tracking-wider text-text-dim">Vault backups</h3>
             {vaultList.map((snap) => (
               <SnapshotCard
                 key={snap.id}
@@ -1329,7 +1340,7 @@ function SnapshotCard({ snapshot, selected, onSelect, onVerify, verifying, onAnn
   return (
     <div
       className={[
-        "panel-glow mb-3 w-full rounded border border-l-2 p-3 text-left",
+        "ui-panel-interactive mb-3 w-full border-l-2 p-3 text-left",
         selected ? "is-active border-accent/50" : "border-white/10",
       ].join(" ")}
       style={{ borderLeftColor: snapshot.labelColor }}
@@ -1342,7 +1353,7 @@ function SnapshotCard({ snapshot, selected, onSelect, onVerify, verifying, onAnn
                 value={labelDraft}
                 onChange={(e) => setLabelDraft(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
-                className="w-full rounded border border-white/10 bg-bg-primary px-1 font-display text-sm"
+                className="ui-input w-full px-2 py-1 font-display text-sm"
               />
             ) : (
               <div
@@ -1361,7 +1372,7 @@ function SnapshotCard({ snapshot, selected, onSelect, onVerify, verifying, onAnn
           <div className="flex flex-col items-end gap-1">
             <span
               className={[
-                "rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase",
+                "rounded-md border px-1.5 py-0.5 font-mono text-xs uppercase",
                 snapshot.origin === SaveOrigin.ActiveDirectory
                   ? "border-warning/40 text-warning"
                   : "border-white/15 text-text-dim",
@@ -1378,7 +1389,7 @@ function SnapshotCard({ snapshot, selected, onSelect, onVerify, verifying, onAnn
           value={noteDraft}
           onChange={(e) => setNoteDraft(e.target.value)}
           rows={2}
-          className="mt-2 w-full rounded border border-white/10 bg-bg-primary px-2 py-1 font-mono text-xs"
+          className="ui-input mt-2 w-full px-2 py-1"
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -1396,19 +1407,19 @@ function SnapshotCard({ snapshot, selected, onSelect, onVerify, verifying, onAnn
         </p>
       )}
       {!editing && (snapshot.note ?? "").length > 80 ? (
-        <button type="button" className="font-mono text-[10px] text-accent" onClick={() => setExpanded((v) => !v)}>
+        <button type="button" className="ui-focus-ring font-mono text-xs text-accent" onClick={() => setExpanded((v) => !v)}>
           {expanded ? "Less" : "More"}
         </button>
       ) : null}
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <span className="font-mono text-[10px] text-text-dim">
+        <span className="font-mono text-xs text-text-dim">
           {snapshot.fileCount} files · {formatBytes(snapshot.metadata.byteSize)}
         </span>
         <button
           type="button"
           onClick={onVerify}
           disabled={verifying}
-          className="rounded border border-white/15 px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
+          className="ui-btn border-white/15 px-2 py-0.5 disabled:opacity-40"
         >
           Verify
         </button>
@@ -1450,16 +1461,16 @@ function LabelColorChooser({ snapshotId, gameId, color, onAnnotation }) {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="mt-1 flex items-center gap-2 rounded border border-white/15 px-2 py-1.5 hover:border-white/25"
+        className="ui-btn mt-1 flex items-center gap-2 border-white/15 px-2 py-1.5 hover:border-white/30"
         aria-expanded={open}
         aria-haspopup="listbox"
         title="Choose label colour"
       >
         <span
-          className="h-5 w-5 shrink-0 rounded-full border-2 border-white/30 shadow-inner"
+          className="h-5 w-5 shrink-0 rounded-full border-2 border-white/30"
           style={{ background: color }}
         />
-        <span className="font-mono text-[10px] text-text-dim">
+        <span className="font-mono text-xs text-text-dim">
           {isDefault ? "Default" : "Custom"}
         </span>
       </button>
@@ -1467,7 +1478,7 @@ function LabelColorChooser({ snapshotId, gameId, color, onAnnotation }) {
         <div
           role="listbox"
           aria-label="Label colours"
-          className="absolute left-0 top-full z-20 mt-1 rounded border border-white/15 bg-bg-panel p-2 shadow-lg"
+          className="absolute left-0 top-full z-20 mt-1 rounded-lg border border-white/15 bg-bg-panel p-2 shadow-elevation"
         >
           <div className="grid grid-cols-3 gap-2">
             {LABEL_COLORS.map((c) => (
@@ -1484,8 +1495,8 @@ function LabelColorChooser({ snapshotId, gameId, color, onAnnotation }) {
                   setOpen(false);
                 }}
                 className={[
-                  "h-8 w-8 rounded-full border-2 transition-transform hover:scale-105",
-                  color === c ? "border-white scale-105" : "border-white/20",
+                  "h-8 w-8 rounded-full border-2 transition-colors duration-150 hover:border-accent/50",
+                  color === c ? "border-accent" : "border-white/20",
                 ].join(" ")}
                 style={{ background: c }}
               />
@@ -1511,15 +1522,15 @@ function DetailPanel({
 }) {
   if (!snapshot || !game) {
     return (
-      <aside className="flex w-72 shrink-0 flex-col border-l border-white/10 bg-bg-panel panel-animate density-pad">
+      <aside className="flex w-72 shrink-0 flex-col border-l border-white/10 bg-bg-panel density-pad">
         <p className="font-mono text-sm text-text-dim">Select a snapshot</p>
       </aside>
     );
   }
   return (
-    <aside className="panel-animate flex h-full min-h-0 w-72 shrink-0 flex-col overflow-hidden border-l border-white/10 bg-bg-panel">
+    <aside className="flex h-full min-h-0 w-72 shrink-0 flex-col overflow-hidden border-l border-white/10 bg-bg-panel">
       <div className="density-pad shrink-0 border-b border-white/10">
-        <h3 className="header-bloom font-display text-lg font-semibold">Details</h3>
+        <h3 className=" font-display text-lg font-semibold">Details</h3>
         <div className="mt-2">
           <IntegrityBadge integrity={snapshot.integrity} loading={verifying} />
         </div>
@@ -1548,14 +1559,14 @@ function DetailPanel({
             type="button"
             onClick={onVerify}
             disabled={verifying}
-            className="flex items-center justify-center gap-1 rounded border border-accent/40 py-1.5 text-accent disabled:opacity-50"
+            className="ui-btn flex w-full items-center justify-center gap-1 border-accent/40 py-1.5 text-accent disabled:opacity-50"
           >
-            <ShieldCheck size={14} /> Verify
+            <ShieldCheck size={16} /> Verify
           </button>
           <button
             type="button"
             onClick={onRestore}
-            className="rounded border border-warning/50 py-1.5 text-warning"
+            className="ui-btn w-full border-warning/50 py-1.5 text-warning"
           >
             Restore to Active
           </button>
@@ -1564,7 +1575,7 @@ function DetailPanel({
             onClick={onRollback}
             disabled={!canRollback || rollingBack}
             className={[
-              "rounded border py-1.5 disabled:opacity-40",
+              "ui-btn w-full py-1.5 disabled:opacity-40",
               canRollback ? "border-warning text-warning" : "border-white/15 text-text-dim",
             ].join(" ")}
           >
@@ -1573,7 +1584,7 @@ function DetailPanel({
           <button
             type="button"
             onClick={onDelete}
-            className="rounded border border-danger/50 py-1.5 text-danger"
+            className="ui-btn w-full border-danger/50 py-1.5 text-danger"
           >
             Delete snapshot
           </button>
@@ -1587,7 +1598,7 @@ function ModalBackdrop({ children, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
       <button type="button" className="absolute inset-0" aria-label="Close" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg rounded border border-white/15 bg-bg-panel p-5 shadow-glow">
+      <div className="relative z-10 w-full max-w-lg rounded-lg border border-white/15 bg-bg-panel p-5 shadow-elevation">
         {children}
       </div>
     </div>
@@ -1668,7 +1679,7 @@ function AddGameModal({ open, onClose, onSubmit, loading }) {
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="mt-1 w-full rounded border border-white/10 bg-bg-primary px-2 py-2 text-text-primary"
+          className="ui-input mt-1 w-full px-2 py-2"
         />
       </label>
       <label className="mt-3 block font-mono text-xs text-text-dim">
@@ -1677,25 +1688,25 @@ function AddGameModal({ open, onClose, onSubmit, loading }) {
           <input
             value={path}
             onChange={(e) => setPath(e.target.value)}
-            className="min-w-0 flex-1 rounded border border-white/10 bg-bg-primary px-2 py-2 text-text-primary"
+            className="ui-input min-w-0 flex-1 px-2 py-2"
           />
           <button
             type="button"
             disabled={browsing || loading}
             onClick={handleBrowse}
-            className="shrink-0 rounded border border-white/15 px-2 font-mono text-xs disabled:opacity-50"
+            className="ui-btn shrink-0 border-white/15 px-2 disabled:opacity-50"
           >
             {browsing ? "…" : "Browse"}
           </button>
         </div>
       </label>
       {path.trim() ? (
-        <div className="mt-3 max-h-36 overflow-y-auto rounded border border-white/10 bg-bg-primary p-2">
-          <p className="font-mono text-[10px] text-text-dim">
+        <div className="mt-3 max-h-36 overflow-y-auto rounded-lg border border-white/10 bg-bg-primary p-2">
+          <p className="font-mono text-xs text-text-dim">
             {scanning ? "Scanning for save files…" : `Found ${discovered.length} save file(s)`}
           </p>
           {discovered.length > 0 ? (
-            <ul className="mt-2 space-y-1 font-mono text-[10px] text-text-primary">
+            <ul className="mt-2 space-y-1 font-mono text-xs text-text-primary">
               {discovered.map((f) => (
                 <li key={f.absolutePath} className="truncate" title={f.absolutePath}>
                   {f.relativePath} · {formatBytes(f.size)}
@@ -1703,14 +1714,14 @@ function AddGameModal({ open, onClose, onSubmit, loading }) {
               ))}
             </ul>
           ) : !scanning ? (
-            <p className="mt-1 font-mono text-[10px] text-warning">
+            <p className="mt-1 font-mono text-xs text-warning">
               No .sav, .save, .dat, .bak, .profile, or .json files found in this folder (searched up to 4 levels deep).
             </p>
           ) : null}
         </div>
       ) : null}
       <div className="mt-5 flex justify-end gap-2">
-        <button type="button" onClick={onClose} className="rounded border border-white/15 px-3 py-1 font-mono text-xs">
+        <button type="button" onClick={onClose} className="ui-btn border-white/15 px-3 py-1">
           Cancel
         </button>
         <button
@@ -1723,7 +1734,7 @@ function AddGameModal({ open, onClose, onSubmit, loading }) {
               discoveredFiles: discovered,
             })
           }
-          className="rounded border border-accent/50 px-3 py-1 font-mono text-xs text-accent disabled:opacity-40"
+          className="ui-btn border-accent/50 px-3 py-1 text-accent disabled:opacity-40"
         >
           {loading ? "Adding…" : "Confirm"}
         </button>
@@ -1746,7 +1757,7 @@ function BackupModal({ open, onClose, onConfirm, loading, progress }) {
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          className="mt-1 w-full rounded border border-white/10 bg-bg-primary px-2 py-2"
+          className="ui-input mt-1 w-full px-2 py-2"
         />
       </label>
       <label className="mt-3 block font-mono text-xs text-text-dim">
@@ -1755,7 +1766,7 @@ function BackupModal({ open, onClose, onConfirm, loading, progress }) {
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={3}
-          className="mt-1 w-full rounded border border-white/10 bg-bg-primary px-2 py-2"
+          className="ui-input mt-1 w-full px-2 py-2"
         />
       </label>
       {loading ? (
@@ -1764,14 +1775,14 @@ function BackupModal({ open, onClose, onConfirm, loading, progress }) {
         </div>
       ) : null}
       <div className="mt-5 flex justify-end gap-2">
-        <button type="button" onClick={onClose} disabled={loading} className="rounded border border-white/15 px-3 py-1 font-mono text-xs">
+        <button type="button" onClick={onClose} disabled={loading} className="ui-btn border-white/15 px-3 py-1">
           Cancel
         </button>
         <button
           type="button"
           disabled={loading}
           onClick={() => onConfirm({ label: label.trim() || null, note: note.trim() || null })}
-          className="rounded border border-accent/50 px-3 py-1 font-mono text-xs text-accent disabled:opacity-40"
+          className="ui-btn border-accent/50 px-3 py-1 text-accent disabled:opacity-40"
         >
           {loading ? "Backing up…" : "Confirm backup"}
         </button>
@@ -1811,23 +1822,23 @@ function RestoreConfirmModal({ open, onClose, onConfirm, game, snapshot, loading
 
   return (
     <ModalBackdrop onClose={onClose}>
-      <div className="modal-glitch">
+      <div className="modal-panel">
         <h3 className="font-display text-lg font-semibold text-danger">Restore to active?</h3>
         <p className="mt-2 font-mono text-xs text-text-dim">
           This will overwrite active save files with vault snapshot <strong>{snapshot.label ?? snapshot.fileName}</strong>.
           This action cannot be undone except via rollback.
         </p>
         {serverWarning ? (
-          <p className="mt-2 rounded border border-danger/30 bg-danger/5 p-2 font-mono text-[10px] text-danger">
+          <p className="mt-2 rounded-lg border border-danger/30 bg-danger/5 p-2 font-mono text-xs text-danger">
             {serverWarning}
           </p>
         ) : null}
         {warningError ? (
-          <p className="mt-2 font-mono text-[10px] text-warning">Could not load restore details: {warningError}</p>
+          <p className="mt-2 font-mono text-xs text-warning">Could not load restore details: {warningError}</p>
         ) : null}
         {game.hasConflict && game.conflictFiles.length > 0 ? (
-          <div className="mt-4 max-h-48 overflow-auto rounded border border-warning/30">
-            <table className="w-full font-mono text-[10px]">
+          <div className="mt-4 max-h-48 overflow-auto rounded-lg border border-warning/30">
+            <table className="w-full font-mono text-xs">
               <thead className="text-left text-text-dim">
                 <tr>
                   <th className="p-2">File</th>
@@ -1844,7 +1855,7 @@ function RestoreConfirmModal({ open, onClose, onConfirm, game, snapshot, loading
               </tbody>
             </table>
             {game.conflictFiles.map((row) => (
-              <pre key={`${row.path}-diff`} className="border-t border-white/5 p-2 text-[10px] text-text-dim">
+              <pre key={`${row.path}-diff`} className="border-t border-white/5 p-2 font-mono text-xs text-text-dim">
                 {row.activeSnippet}
                 {"\n---\n"}
                 {row.snapshotSnippet}
@@ -1858,14 +1869,14 @@ function RestoreConfirmModal({ open, onClose, onConfirm, game, snapshot, loading
           </div>
         ) : null}
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={loading} className="rounded border border-white/15 px-3 py-1 font-mono text-xs">
+          <button type="button" onClick={onClose} disabled={loading} className="ui-btn border-white/15 px-3 py-1">
             Cancel
           </button>
           <button
             type="button"
             disabled={loading}
             onClick={onConfirm}
-            className="rounded border border-danger/50 px-3 py-1 font-mono text-xs text-danger disabled:opacity-40"
+            className="ui-btn border-danger/50 px-3 py-1 text-danger disabled:opacity-40"
           >
             {loading ? "Restoring…" : "Confirm restore"}
           </button>
@@ -1884,14 +1895,14 @@ function DeleteConfirmModal({ open, snapshot, onClose, onConfirm, loading }) {
         Permanently remove <strong>{snapshot.label ?? snapshot.fileName}</strong> from the vault.
       </p>
       <div className="mt-5 flex justify-end gap-2">
-        <button type="button" onClick={onClose} className="rounded border border-white/15 px-3 py-1 font-mono text-xs">
+        <button type="button" onClick={onClose} className="ui-btn border-white/15 px-3 py-1">
           Cancel
         </button>
         <button
           type="button"
           disabled={loading}
           onClick={onConfirm}
-          className="rounded border border-danger/50 px-3 py-1 font-mono text-xs text-danger disabled:opacity-40"
+          className="ui-btn border-danger/50 px-3 py-1 text-danger disabled:opacity-40"
         >
           {loading ? "Deleting…" : "Delete"}
         </button>
@@ -1985,11 +1996,11 @@ function IgnoredGamesModal({ open, onClose }) {
   return (
     <ModalBackdrop onClose={onClose}>
       <div className="flex max-h-[min(80vh,32rem)] flex-col">
-        <h3 className="header-bloom font-display text-lg font-semibold text-accent">Ignored games</h3>
+        <h3 className=" font-display text-lg font-semibold text-accent">Ignored games</h3>
         <p className="mt-2 font-mono text-xs text-text-dim">
           Games and folders listed here are excluded from scans. Your save files on disk are never deleted.
         </p>
-        <div className="mt-4 min-h-0 flex-1 overflow-y-auto rounded border border-white/10">
+        <div className="mt-4 min-h-0 flex-1 overflow-y-auto rounded-lg border border-white/10">
           {loading ? (
             <p className="p-4 font-mono text-xs text-text-dim">Loading…</p>
           ) : entries.length === 0 ? (
@@ -2002,12 +2013,12 @@ function IgnoredGamesModal({ open, onClose }) {
                     <div className="truncate font-display text-sm font-semibold">
                       {entry.name ?? entry.path.split(/[/\\]/).pop() ?? entry.path}
                     </div>
-                    <div className="break-all font-mono text-[10px] text-text-dim">{entry.path}</div>
+                    <div className="break-all font-mono text-xs text-text-dim">{entry.path}</div>
                   </div>
                   <button
                     type="button"
                     onClick={() => handleRemove(entry.path)}
-                    className="shrink-0 rounded border border-white/15 px-2 py-1 font-mono text-[10px] text-text-dim hover:border-danger/40 hover:text-danger"
+                    className="ui-btn shrink-0 border-white/15 px-2 py-1 text-text-dim hover:border-danger/40 hover:text-danger"
                   >
                     Remove
                   </button>
@@ -2024,7 +2035,7 @@ function IgnoredGamesModal({ open, onClose }) {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="e.g. Old RPG saves"
-              className="mt-1 w-full rounded border border-white/10 bg-bg-primary px-2 py-2"
+              className="ui-input mt-1 w-full px-2 py-2"
             />
           </label>
           <label className="mb-2 block font-mono text-xs text-text-dim">
@@ -2034,14 +2045,14 @@ function IgnoredGamesModal({ open, onClose }) {
                 value={newPath}
                 onChange={(e) => setNewPath(e.target.value)}
                 placeholder="C:\Users\…\Saved Games\…"
-                className="min-w-0 flex-1 rounded border border-white/10 bg-bg-primary px-2 py-2"
+                className="ui-input min-w-0 flex-1 px-2 py-2"
               />
               <button
                 type="button"
                 onClick={handlePickFolder}
-                className="flex shrink-0 items-center gap-1 rounded border border-white/15 px-2 py-2 font-mono text-[10px]"
+                className="ui-btn flex shrink-0 items-center gap-1 border-white/15 px-2 py-2"
               >
-                <FolderPlus size={14} /> Browse
+                <FolderPlus size={16} /> Browse
               </button>
             </div>
           </label>
@@ -2049,13 +2060,13 @@ function IgnoredGamesModal({ open, onClose }) {
             type="button"
             disabled={adding || !newPath.trim()}
             onClick={handleAdd}
-            className="rounded border border-accent/40 px-3 py-1 font-mono text-xs text-accent disabled:opacity-40"
+            className="ui-btn border-accent/40 px-3 py-1 text-accent disabled:opacity-40"
           >
             {adding ? "Adding…" : "Add to ignore list"}
           </button>
         </div>
         <div className="mt-4 flex justify-end">
-          <button type="button" onClick={onClose} className="rounded border border-white/15 px-3 py-1 font-mono text-xs">
+          <button type="button" onClick={onClose} className="ui-btn border-white/15 px-3 py-1">
             Close
           </button>
         </div>
@@ -2092,11 +2103,11 @@ function ThemeEditor({ onClose, onOpenIgnoredGames, onImportError, onImportSucce
 
   return (
     <div className="absolute inset-0 z-40 flex bg-black/60">
-      <div className="m-auto flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded border border-white/15 bg-bg-panel">
+      <div className="m-auto flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-white/15 bg-bg-panel shadow-elevation">
         <div className="flex items-center justify-between border-b border-white/10 density-pad">
-          <h2 className="header-bloom font-display text-xl font-semibold">Settings</h2>
-          <button type="button" onClick={onClose} aria-label="Close settings">
-            <X size={18} />
+          <h2 className="font-display text-xl font-semibold">Settings</h2>
+          <button type="button" onClick={onClose} aria-label="Close settings" className="ui-icon-btn">
+            <X size={20} />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto density-pad font-mono text-xs">
@@ -2104,9 +2115,9 @@ function ThemeEditor({ onClose, onOpenIgnoredGames, onImportError, onImportSucce
           <button
             type="button"
             onClick={onOpenIgnoredGames}
-            className="mb-4 flex w-full items-center justify-center gap-2 rounded border border-white/15 py-2 text-text-primary hover:border-accent/40"
+            className="ui-btn mb-4 flex w-full items-center justify-center gap-2 border-white/15 py-2 text-text-primary hover:border-accent/40"
           >
-            <EyeOff size={14} className="text-accent" />
+            <EyeOff size={16} className="text-accent" />
             Ignored games
           </button>
           <p className="mb-2 text-text-dim">Theme · Presets</p>
@@ -2117,14 +2128,14 @@ function ThemeEditor({ onClose, onOpenIgnoredGames, onImportError, onImportSucce
                 type="button"
                 onClick={() => applyPreset(preset)}
                 className={[
-                  "rounded border px-2 py-1",
+                  "ui-btn px-2 py-1",
                   theme.presetName === preset.name ? "border-accent text-accent" : "border-white/15",
                 ].join(" ")}
               >
                 {preset.name}
               </button>
             ))}
-            <button type="button" onClick={() => applyPreset(THEME_PRESET_DARKROOM)} className="rounded border border-white/15 px-2 py-1">
+            <button type="button" onClick={() => applyPreset(THEME_PRESET_DARKROOM)} className="ui-btn border-white/15 px-2 py-1">
               Reset DARKROOM
             </button>
           </div>
@@ -2178,11 +2189,11 @@ function ThemeEditor({ onClose, onOpenIgnoredGames, onImportError, onImportSucce
             </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={theme.glowEnabled} onChange={toggleGlow} />
-              Glow
+              Highlight borders
             </label>
           </div>
           <div
-            className="panel-glow rounded border border-white/10 p-4"
+            className="ui-panel-interactive p-4"
             style={{ background: theme.tokens.bgPrimary, color: theme.tokens.textPrimary }}
           >
             <p className="font-display text-lg" style={{ color: theme.tokens.accent }}>
@@ -2202,14 +2213,14 @@ function ThemeEditor({ onClose, onOpenIgnoredGames, onImportError, onImportSucce
                 a.click();
                 URL.revokeObjectURL(url);
               }}
-              className="rounded border border-accent/40 px-3 py-1 text-accent"
+              className="ui-btn border-accent/40 px-3 py-1 text-accent"
             >
               Export JSON
             </button>
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              className="rounded border border-white/15 px-3 py-1"
+              className="ui-btn border-white/15 px-3 py-1"
             >
               Import JSON
             </button>
@@ -2227,17 +2238,17 @@ function PanelCollapseButton({ collapsed, onClick, side }) {
       type="button"
       onClick={onClick}
       className={[
-        "absolute top-1/2 z-20 -translate-y-1/2 rounded border border-white/10 bg-bg-panel p-1 text-text-dim",
+        "ui-icon-btn absolute top-1/2 z-20 -translate-y-1/2 bg-bg-panel",
         side === "left" ? (collapsed ? "left-0" : "-left-3") : collapsed ? "right-0" : "-right-3",
       ].join(" ")}
       aria-label={collapsed ? "Expand panel" : "Collapse panel"}
     >
       {side === "left" ? (
-        collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />
+        collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />
       ) : collapsed ? (
-        <ChevronLeft size={14} />
+        <ChevronLeft size={16} />
       ) : (
-        <ChevronRight size={14} />
+        <ChevronRight size={16} />
       )}
     </button>
   );

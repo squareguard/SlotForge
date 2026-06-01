@@ -1,12 +1,11 @@
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Rajdhani:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Rajdhani:wght@400;500;600&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /*
- * DARKROOM — default theme (PRD FR-46)
- * All theme presets write these CSS custom properties on :root at runtime.
+ * Design tokens — defaults; theme presets override via :root custom properties.
  */
 :root {
   --accent: #00f5ff;
@@ -16,11 +15,13 @@
   --text-dim: #6b7a8f;
   --danger: #ff2d55;
   --warning: #ffb800;
+  --success: #22c55e;
+  --border-subtle: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  --border-strong: color-mix(in srgb, var(--text-primary) 22%, transparent);
 
   --font-size-base: 16px;
   --panel-density: comfortable;
   --scanlines-enabled: 0;
-  --glow-enabled: 1;
 }
 
 html {
@@ -41,6 +42,8 @@ body {
 #root {
   min-height: 100%;
   height: 100%;
+  /* Separates app chrome from the OS window edge */
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
 }
 
 .font-display {
@@ -53,56 +56,89 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Scanline overlay (task 3.8) */
+@layer components {
+  .ui-focus-ring:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+
+  .ui-btn {
+    @apply rounded-md border font-mono text-xs transition-colors duration-150 ui-focus-ring;
+  }
+
+  .ui-panel {
+    @apply rounded-lg border border-white/10 bg-bg-panel;
+  }
+
+  .ui-panel-interactive {
+    @apply ui-panel transition-colors duration-150;
+  }
+
+  .ui-panel-interactive:hover,
+  .ui-panel-interactive.is-active {
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+
+  html[data-glow="1"] .ui-panel-interactive:hover,
+  html[data-glow="1"] .ui-panel-interactive.is-active {
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+
+  .ui-input {
+    @apply rounded-md border border-white/10 bg-bg-primary font-mono text-xs text-text-primary transition-colors duration-150 ui-focus-ring;
+  }
+
+  .ui-input:focus {
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  }
+
+  .ui-select {
+    @apply ui-input px-2 py-1;
+  }
+
+  .ui-icon-btn {
+    @apply ui-btn border-white/15 p-2 text-text-dim hover:border-white/30 hover:text-text-primary;
+  }
+
+  .ui-menu-item {
+    @apply flex w-full items-center gap-2 px-3 py-2 text-left font-mono text-xs transition-colors duration-150 ui-focus-ring;
+  }
+}
+
+/* Optional CRT scanlines (off by default; settings toggle) */
 .scanline-overlay {
   pointer-events: none;
   position: fixed;
   inset: 0;
   z-index: 50;
-  opacity: calc(var(--scanlines-enabled) * 0.12);
+  opacity: calc(var(--scanlines-enabled) * 0.06);
   background: repeating-linear-gradient(
     to bottom,
-    rgba(255, 255, 255, 0.04) 0px,
-    rgba(255, 255, 255, 0.04) 1px,
+    rgba(255, 255, 255, 0.03) 0px,
+    rgba(255, 255, 255, 0.03) 1px,
     transparent 2px,
     transparent 4px
   );
 }
 
-/* Glow panels when enabled (task 3.8) */
-.panel-glow {
-  transition: box-shadow 0.15s ease, border-color 0.15s ease;
-}
-html[data-glow="1"] .panel-glow:hover,
-html[data-glow="1"] .panel-glow.is-active {
-  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-}
-
-/* Panel transitions (task 3.9) */
-.panel-animate {
-  animation: panelIn 0.18s ease-out;
-}
-@keyframes panelIn {
+/* Modal: short fade only (no skew/glitch) */
+@keyframes modalIn {
   from {
     opacity: 0;
-    transform: translateX(8px);
   }
   to {
     opacity: 1;
-    transform: translateX(0);
   }
 }
-
-.header-bloom {
-  text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 35%, transparent);
+.modal-panel {
+  animation: modalIn 0.2s ease-out;
 }
 
-/* Toast slide-in (task 3.5) */
+/* Toast slide-in */
 @keyframes toastIn {
   from {
     opacity: 0;
-    transform: translateX(24px);
+    transform: translateX(12px);
   }
   to {
     opacity: 1;
@@ -113,45 +149,6 @@ html[data-glow="1"] .panel-glow.is-active {
   animation: toastIn 0.2s ease-out;
 }
 
-/* Glitch modal entrance (task 5.8 prep) */
-@keyframes glitchIn {
-  0% {
-    opacity: 0;
-    transform: translate(0, 0) skewX(0deg);
-  }
-  20% {
-    opacity: 1;
-    transform: translate(-3px, 1px) skewX(-2deg);
-  }
-  40% {
-    transform: translate(3px, -1px) skewX(2deg);
-  }
-  60% {
-    transform: translate(-2px, 0) skewX(-1deg);
-  }
-  100% {
-    opacity: 1;
-    transform: translate(0, 0) skewX(0deg);
-  }
-}
-.modal-glitch {
-  animation: glitchIn 0.28s ease-out;
-}
-
-/* Progress bar flicker (task 5.1 prep) */
-@keyframes flicker {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
-}
-.progress-flicker {
-  animation: flicker 0.35s ease-in-out infinite;
-}
-
 [data-density="compact"] .density-pad {
   padding: 0.5rem;
 }
@@ -159,31 +156,28 @@ html[data-glow="1"] .panel-glow.is-active {
   padding: 1rem;
 }
 
-/* Scrollable panels (game list, vault, detail) */
 .scroll-y-panel {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--accent) 45%, var(--bg-panel)) var(--bg-primary);
+  scrollbar-color: color-mix(in srgb, var(--accent) 35%, var(--bg-panel)) var(--bg-primary);
 }
 
 .scroll-y-panel::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
 }
 
 .scroll-y-panel::-webkit-scrollbar-track {
   background: var(--bg-primary);
-  border-left: 1px solid color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .scroll-y-panel::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--accent) 40%, var(--bg-panel));
-  border: 2px solid var(--bg-panel);
-  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 30%, var(--bg-panel));
+  border-radius: 4px;
 }
 
 .scroll-y-panel::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--accent) 65%, var(--bg-panel));
+  background: color-mix(in srgb, var(--accent) 50%, var(--bg-panel));
 }
