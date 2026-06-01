@@ -8,6 +8,8 @@ use crate::api::dto::{
     IntegrityStatusDto, LibraryStateDto, RestoreResultDto, SnapshotDto, SnapshotResultDto,
     VerifyAllResultDto,
 };
+use crate::api::library_cache;
+use crate::services::discovery_service::DiscoverySummary;
 use crate::api::swap_session::{self, LastSwapSession};
 use crate::domain::conflict::ResolutionChoice;
 use crate::domain::game::GameRecord;
@@ -48,12 +50,29 @@ fn integrity_for(save_id: &str) -> Result<IntegrityStatusDto> {
 }
 
 pub fn load_library() -> Result<LibraryStateDto> {
-    build_library_state()
+    crate::services::audit_service::init_logging();
+    let _ = config_service::ensure_initialized()?;
+
+    if let Some(cached) = library_cache::load()? {
+        return attach_last_swap(cached);
+    }
+
+    let games = library_service::build_canonical_library(DiscoverySummary {
+        scanned_roots: Vec::new(),
+        discovered_games: Vec::new(),
+    })?;
+    attach_last_swap(build_library_state_from_games(games)?)
 }
 
 pub fn scan_games() -> Result<LibraryStateDto> {
-    let _ = discovery_service::discover_and_merge_library()?;
-    build_library_state()
+    let games = discovery_service::discover_and_merge_library()?;
+    let state = attach_last_swap(build_library_state_from_games(games)?)?;
+    let _ = library_cache::save(&state);
+    Ok(state)
+}
+
+pub fn save_library_cache(state: &LibraryStateDto) -> Result<()> {
+    library_cache::save(state)
 }
 
 pub fn add_game(name: &str, active_save_dir: &str) -> Result<AddGameResultDto> {
@@ -301,21 +320,26 @@ pub fn destructive_restore_warning(snapshot_id: &str) -> Result<String> {
     ))
 }
 
+fn attach_last_swap(mut state: LibraryStateDto) -> Result<LibraryStateDto> {
+    state.last_swap = swap_session::load_last_swap()?.map(|s| swap_session::session_to_dto(&s));
+    Ok(state)
+}
+
 fn build_library_state() -> Result<LibraryStateDto> {
     crate::services::audit_service::init_logging();
     let _ = config_service::ensure_initialized()?;
+    let games = discovery_service::discover_and_merge_library()?;
+    let state = attach_last_swap(build_library_state_from_games(games)?)?;
+    let _ = library_cache::save(&state);
+    Ok(state)
+}
 
-    let filters = LibraryFilters::default();
-    let screen = library_screen::load_state(filters)?;
-    let games = screen.items;
-
+fn build_library_state_from_games(games: Vec<GameRecord>) -> Result<LibraryStateDto> {
     let mut vault_by_game_id = HashMap::new();
     for game in &games {
         let snapshots = build_snapshots_for_game(game)?;
         vault_by_game_id.insert(game.id.clone(), snapshots);
     }
-
-    let last_swap = swap_session::load_last_swap()?.map(|s| swap_session::session_to_dto(&s));
 
     let mut game_dtos = Vec::new();
     for game in &games {
@@ -339,7 +363,7 @@ fn build_library_state() -> Result<LibraryStateDto> {
     Ok(LibraryStateDto {
         games: game_dtos,
         vault_by_game_id,
-        last_swap,
+        last_swap: None,
     })
 }
 

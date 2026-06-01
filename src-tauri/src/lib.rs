@@ -87,6 +87,14 @@ fn scan_games() -> ApiResponse<LibraryStateDto> {
 }
 
 #[tauri::command]
+async fn scan_games_background() -> ApiResponse<LibraryStateDto> {
+    match tauri::async_runtime::spawn_blocking(slotforge::api::scan_games).await {
+        Ok(result) => from_anyhow(result),
+        Err(err) => ApiResponse::failure("JOIN", err.to_string()),
+    }
+}
+
+#[tauri::command]
 fn add_game(args: AddGameArgs) -> ApiResponse<AddGameResultDto> {
     from_anyhow(slotforge::api::add_game(&args.name, &args.active_save_dir))
 }
@@ -179,6 +187,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             load_library,
             scan_games,
+            scan_games_background,
             add_game,
             backup_game,
             restore_snapshot,

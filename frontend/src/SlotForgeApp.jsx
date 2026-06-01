@@ -2219,17 +2219,31 @@ function SlotForgeAppInner() {
 
   useEffect(() => {
     let cancelled = false;
+    const bootScanDelayMs = 1000;
+
     (async () => {
-      dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: true } });
       const res = await slotforgeApi.loadLibrary();
       if (cancelled) return;
-      dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: false } });
       if (!res.ok) {
         pushToast({ type: "error", message: res.error.message });
         return;
       }
       applyLibrary(res.data);
+
+      await new Promise((resolve) => setTimeout(resolve, bootScanDelayMs));
+      if (cancelled) return;
+
+      dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: true } });
+      const scanRes = await slotforgeApi.scanGamesBackground();
+      if (cancelled) return;
+      dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: false } });
+      if (!scanRes.ok) {
+        pushToast({ type: "error", message: scanRes.error.message });
+        return;
+      }
+      applyLibrary(scanRes.data);
     })();
+
     return () => {
       cancelled = true;
     };
@@ -2237,7 +2251,7 @@ function SlotForgeAppInner() {
 
   const handleScan = useCallback(async () => {
     dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: true } });
-    const res = await slotforgeApi.scanGames();
+    const res = await slotforgeApi.scanGamesBackground();
     dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: false } });
     if (!res.ok) {
       logOp("scan", "failure", res.error.message);

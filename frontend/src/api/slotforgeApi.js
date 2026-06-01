@@ -40,6 +40,11 @@ export const slotforgeApi = {
     return invokeApi("scan_games");
   },
 
+  /** Full library scan on a background thread (does not block the UI). */
+  scanGamesBackground() {
+    return invokeApi("scan_games_background");
+  },
+
   /**
    * @param {{ name: string, activeSaveDir: string }} input
    */
