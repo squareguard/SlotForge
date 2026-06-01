@@ -178,6 +178,15 @@ export const ResolutionChoice = {
 /** Label colour swatches for snapshot tags (vault filter + colour picker). */
 const LABEL_COLORS = ["#00f5ff", "#ffb800", "#a855f7", "#22c55e", "#ff2d55", "#f472b6"];
 
+/** @param {string} id */
+function labelColorForId(id) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash + id.charCodeAt(i)) >>> 0;
+  }
+  return LABEL_COLORS[hash % LABEL_COLORS.length];
+}
+
 const GAME_SOURCES = new Set(Object.values(GameSource));
 const SAVE_ORIGINS = new Set(Object.values(SaveOrigin));
 const INTEGRITY_STATUSES = new Set(Object.values(IntegrityStatus));
@@ -1423,34 +1432,95 @@ function SnapshotCard({ snapshot, selected, onSelect, onVerify, verifying, onAnn
         <span className="font-mono text-[10px] text-text-dim">
           {snapshot.fileCount} files · {formatBytes(snapshot.metadata.byteSize)}
         </span>
-        <div className="flex items-center gap-1">
-          {LABEL_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              title="Label colour"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (snapshot.labelColor === c) return;
-                onAnnotation(snapshot.id, snapshot.gameId, { labelColor: c });
-              }}
-              className={[
-                "h-3 w-3 rounded-full border-2",
-                snapshot.labelColor === c ? "border-white scale-110" : "border-white/20",
-              ].join(" ")}
-              style={{ background: c }}
-            />
-          ))}
-          <button
-            type="button"
-            onClick={onVerify}
-            disabled={verifying}
-            className="ml-1 rounded border border-white/15 px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
-          >
-            Verify
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onVerify}
+          disabled={verifying}
+          className="rounded border border-white/15 px-2 py-0.5 font-mono text-[10px] disabled:opacity-40"
+        >
+          Verify
+        </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * @param {{ snapshotId: string, gameId: string, color: string, onAnnotation: (id: string, gameId: string, patch: object) => void }} props
+ */
+function LabelColorChooser({ snapshotId, gameId, color, onAnnotation }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(/** @type {HTMLDivElement | null} */ (null));
+  const defaultColor = labelColorForId(snapshotId);
+  const isDefault = color === defaultColor;
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointer = (e) => {
+      if (rootRef.current && !rootRef.current.contains(/** @type {Node} */ (e.target))) {
+        setOpen(false);
+      }
+    };
+    const handleKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointer);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative mb-3">
+      <p className="text-text-dim">Label colour</p>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="mt-1 flex items-center gap-2 rounded border border-white/15 px-2 py-1.5 hover:border-white/25"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        title="Choose label colour"
+      >
+        <span
+          className="h-5 w-5 shrink-0 rounded-full border-2 border-white/30 shadow-inner"
+          style={{ background: color }}
+        />
+        <span className="font-mono text-[10px] text-text-dim">
+          {isDefault ? "Default" : "Custom"}
+        </span>
+      </button>
+      {open ? (
+        <div
+          role="listbox"
+          aria-label="Label colours"
+          className="absolute left-0 top-full z-20 mt-1 rounded border border-white/15 bg-bg-panel p-2 shadow-lg"
+        >
+          <div className="grid grid-cols-3 gap-2">
+            {LABEL_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                role="option"
+                aria-selected={color === c}
+                title={c}
+                onClick={() => {
+                  if (color !== c) {
+                    onAnnotation(snapshotId, gameId, { labelColor: c });
+                  }
+                  setOpen(false);
+                }}
+                className={[
+                  "h-8 w-8 rounded-full border-2 transition-transform hover:scale-105",
+                  color === c ? "border-white scale-105" : "border-white/20",
+                ].join(" ")}
+                style={{ background: c }}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1465,6 +1535,7 @@ function DetailPanel({
   canRollback,
   onRollback,
   rollingBack,
+  onAnnotation,
 }) {
   if (!snapshot || !game) {
     return (
@@ -1482,6 +1553,12 @@ function DetailPanel({
         </div>
       </div>
       <div className="scroll-y-panel min-h-0 flex-1 density-pad font-mono text-xs">
+        <LabelColorChooser
+          snapshotId={snapshot.id}
+          gameId={snapshot.gameId}
+          color={snapshot.labelColor}
+          onAnnotation={onAnnotation}
+        />
         <p className="text-text-dim">Notes</p>
         <p className="mb-3">{snapshot.note ?? "—"}</p>
         <p className="text-text-dim">SHA-256</p>
@@ -2627,6 +2704,7 @@ function SlotForgeAppInner() {
               canRollback={canRollback}
               onRollback={handleRollback}
               rollingBack={state.ui.loading.rollingBack}
+              onAnnotation={handleAnnotation}
             />
             <PanelCollapseButton
               collapsed={false}
