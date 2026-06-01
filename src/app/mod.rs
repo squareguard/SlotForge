@@ -1,5 +1,7 @@
 mod startup;
 
+use tracing::warn;
+
 use crate::ui::navigation::{self, AppSection};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,7 +31,7 @@ pub fn run() -> anyhow::Result<()> {
     crate::services::audit_service::init_logging();
 
     if let Err(err) = crate::services::config_service::ensure_initialized() {
-        let _ = crate::services::audit_service::record_event(
+        if let Err(audit_err) = crate::services::audit_service::record_event(
             &crate::services::audit_service::AuditEvent {
                 timestamp: chrono::Utc::now(),
                 action: crate::services::audit_service::AuditAction::AppStartup,
@@ -39,11 +41,13 @@ pub fn run() -> anyhow::Result<()> {
                 source_path: None,
                 destination_path: None,
             },
-        );
+        ) {
+            warn!("audit log write failed: {audit_err:#}");
+        }
         return Err(err);
     }
 
-    let _ = crate::services::audit_service::record_event(
+    if let Err(audit_err) = crate::services::audit_service::record_event(
         &crate::services::audit_service::AuditEvent {
             timestamp: chrono::Utc::now(),
             action: crate::services::audit_service::AuditAction::AppStartup,
@@ -53,7 +57,9 @@ pub fn run() -> anyhow::Result<()> {
             source_path: None,
             destination_path: None,
         },
-    );
+    ) {
+        warn!("audit log write failed: {audit_err:#}");
+    }
 
     let _theme = crate::ui::theme::dark_hacker_theme();
     let mut shell = AppShellState::new();

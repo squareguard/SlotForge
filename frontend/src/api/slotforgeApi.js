@@ -11,9 +11,29 @@ import { open } from "@tauri-apps/plugin-dialog";
  */
 
 /**
+ * @param {unknown} err
+ * @returns {string}
+ */
+export function unexpectedError(err) {
+  return err instanceof Error ? err.message : "An unexpected error occurred.";
+}
+
+/**
+ * @param {string | undefined | null} id
+ * @param {string} label
+ * @returns {ApiFail | null}
+ */
+function validationErrorIfEmpty(id, label) {
+  if (id != null && String(id).trim()) {
+    return null;
+  }
+  return { ok: false, error: { code: "VALIDATION", message: `${label} is required.` } };
+}
+
+/**
  * @template T
  * @param {string} command
- * @param {Record<string, unknown>} [args]
+ * @param {Record<string, unknown>} [argValues]
  * @returns {Promise<ApiOk<T> | ApiFail>}
  */
 async function invokeApi(command, argValues = {}) {
@@ -49,32 +69,64 @@ export const slotforgeApi = {
    * @param {{ name: string, activeSaveDir: string }} input
    */
   addGame(input) {
-    return invokeApi("add_game", {
-      name: input.name,
-      activeSaveDir: input.activeSaveDir,
-    });
+    const name = input.name.trim();
+    const activeSaveDir = input.activeSaveDir.trim();
+    if (!name) {
+      return Promise.resolve({
+        ok: false,
+        error: { code: "VALIDATION", message: "Game name is required." },
+      });
+    }
+    if (!activeSaveDir) {
+      return Promise.resolve({
+        ok: false,
+        error: { code: "VALIDATION", message: "Save folder path is required." },
+      });
+    }
+    return invokeApi("add_game", { name, activeSaveDir });
   },
 
   /**
    * @param {{ gameId: string, label?: string | null, note?: string | null }} input
    */
   backupGame(input) {
+    const err = validationErrorIfEmpty(input.gameId, "Game id");
+    if (err) return Promise.resolve(err);
     return invokeApi("backup_game", {
-      gameId: input.gameId,
+      gameId: String(input.gameId).trim(),
       label: input.label ?? null,
       note: input.note ?? null,
     });
   },
 
   /**
+   * Server-computed warning before overwriting active saves (see `swap_service`).
+   * @param {{ snapshotId: string }} input
+   */
+  destructiveRestoreWarning(input) {
+    const err = validationErrorIfEmpty(input.snapshotId, "Snapshot id");
+    if (err) return Promise.resolve(err);
+    return invokeApi("destructive_restore_warning", {
+      snapshotId: String(input.snapshotId).trim(),
+    });
+  },
+
+  /**
    * @param {{ snapshotId: string, resolutionChoice?: string, confirmedDestructive: boolean }} input
+   * When `resolutionChoice` is omitted, Rust receives `None` (swap default policy applies).
    */
   restoreSnapshot(input) {
-    return invokeApi("restore_snapshot", {
-      snapshotId: input.snapshotId,
-      resolutionChoice: input.resolutionChoice ?? "KeepSource",
+    const err = validationErrorIfEmpty(input.snapshotId, "Snapshot id");
+    if (err) return Promise.resolve(err);
+    /** @type {Record<string, unknown>} */
+    const args = {
+      snapshotId: String(input.snapshotId).trim(),
       confirmedDestructive: input.confirmedDestructive,
-    });
+    };
+    if (input.resolutionChoice != null) {
+      args.resolutionChoice = input.resolutionChoice;
+    }
+    return invokeApi("restore_snapshot", args);
   },
 
   rollbackSwap() {
@@ -85,22 +137,28 @@ export const slotforgeApi = {
    * @param {{ snapshotId: string }} input
    */
   verifySnapshot(input) {
-    return invokeApi("verify_snapshot", { snapshotId: input.snapshotId });
+    const err = validationErrorIfEmpty(input.snapshotId, "Snapshot id");
+    if (err) return Promise.resolve(err);
+    return invokeApi("verify_snapshot", { snapshotId: String(input.snapshotId).trim() });
   },
 
   /**
    * @param {{ gameId: string }} input
    */
   verifyAllSnapshots(input) {
-    return invokeApi("verify_all_snapshots", { gameId: input.gameId });
+    const err = validationErrorIfEmpty(input.gameId, "Game id");
+    if (err) return Promise.resolve(err);
+    return invokeApi("verify_all_snapshots", { gameId: String(input.gameId).trim() });
   },
 
   /**
    * @param {{ snapshotId: string, label?: string | null, note?: string | null, labelColor?: string | null }} input
    */
   updateAnnotation(input) {
+    const err = validationErrorIfEmpty(input.snapshotId, "Snapshot id");
+    if (err) return Promise.resolve(err);
     /** @type {Record<string, unknown>} */
-    const args = { snapshotId: input.snapshotId };
+    const args = { snapshotId: String(input.snapshotId).trim() };
     if ("label" in input) args.label = input.label;
     if ("note" in input) args.note = input.note;
     if ("labelColor" in input) args.labelColor = input.labelColor;
@@ -111,8 +169,10 @@ export const slotforgeApi = {
    * @param {{ snapshotId: string, confirmed?: boolean }} input
    */
   deleteSnapshot(input) {
+    const err = validationErrorIfEmpty(input.snapshotId, "Snapshot id");
+    if (err) return Promise.resolve(err);
     return invokeApi("delete_snapshot", {
-      snapshotId: input.snapshotId,
+      snapshotId: String(input.snapshotId).trim(),
       confirmed: input.confirmed ?? true,
     });
   },
@@ -125,8 +185,15 @@ export const slotforgeApi = {
    * @param {{ path: string, name?: string | null }} input
    */
   addIgnoredPath(input) {
+    const path = input.path.trim();
+    if (!path) {
+      return Promise.resolve({
+        ok: false,
+        error: { code: "VALIDATION", message: "Folder path is required." },
+      });
+    }
     return invokeApi("add_ignored_path", {
-      path: input.path,
+      path,
       name: input.name ?? null,
     });
   },
@@ -135,14 +202,23 @@ export const slotforgeApi = {
    * @param {{ path: string }} input
    */
   removeIgnoredPath(input) {
-    return invokeApi("remove_ignored_path", { path: input.path });
+    const path = input.path.trim();
+    if (!path) {
+      return Promise.resolve({
+        ok: false,
+        error: { code: "VALIDATION", message: "Folder path is required." },
+      });
+    }
+    return invokeApi("remove_ignored_path", { path });
   },
 
   /**
    * @param {{ gameId: string }} input
    */
   ignoreGameFromLibrary(input) {
-    return invokeApi("ignore_game_from_library", { gameId: input.gameId });
+    const err = validationErrorIfEmpty(input.gameId, "Game id");
+    if (err) return Promise.resolve(err);
+    return invokeApi("ignore_game_from_library", { gameId: String(input.gameId).trim() });
   },
 };
 
@@ -156,30 +232,44 @@ export const slotforgeApi = {
  */
 
 /**
+ * @typedef {{ ok: true, files: DiscoveredSaveFile[] }} ScanDirOk
+ * @typedef {{ ok: false, files: [], error: string }} ScanDirFail
+ */
+
+/**
  * @param {string} dirPath
- * @returns {Promise<DiscoveredSaveFile[]>}
+ * @returns {Promise<ScanDirOk | ScanDirFail>}
  */
 export async function scanSaveDirectory(dirPath) {
   const trimmed = dirPath.trim();
-  if (!trimmed) return [];
+  if (!trimmed) {
+    return { ok: true, files: [] };
+  }
 
   const res = await invokeApi("scan_save_directory", { path: trimmed });
   if (res.ok && Array.isArray(res.data)) {
-    return res.data;
+    return { ok: true, files: res.data };
   }
-  return [];
+  const error = res.ok ? "Invalid scan response from backend." : res.error.message;
+  console.warn("scanSaveDirectory failed:", error);
+  return { ok: false, files: [], error };
 }
 
 /**
  * @returns {Promise<string | null>}
  */
 export async function pickSaveDirectory() {
-  const selected = await open({
-    directory: true,
-    multiple: false,
-    title: "Select the folder containing your game save files",
-  });
-  if (!selected) return null;
-  if (typeof selected === "string") return selected;
-  return null;
+  try {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: "Select the folder containing your game save files",
+    });
+    if (!selected) return null;
+    if (typeof selected === "string") return selected;
+    return null;
+  } catch (err) {
+    console.warn("pickSaveDirectory failed:", unexpectedError(err));
+    throw err;
+  }
 }

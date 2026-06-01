@@ -31,6 +31,10 @@ pub fn load_state(game: &GameRecord) -> Result<VaultScreenState> {
 }
 
 pub fn inspect_save(game: &GameRecord, save_id: &str) -> Result<SaveRecord> {
+    let save_id = save_id.trim();
+    if save_id.is_empty() {
+        anyhow::bail!("save id is required");
+    }
     let state = load_state(game)?;
     state
         .saves

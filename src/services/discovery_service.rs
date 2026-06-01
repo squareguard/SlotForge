@@ -5,10 +5,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use walkdir::WalkDir;
-
 use crate::domain::game::{GameRecord, GameSource};
-use crate::platform::fs::normalize_and_dedup_paths;
+use crate::platform::fs::{normalize_and_dedup_paths, walk_tree};
 use crate::platform::path_defaults::default_scan_paths;
 use crate::services::blacklist_service;
 use crate::services::config_service;
@@ -42,16 +40,16 @@ pub fn discover_games_from_roots(roots: &[PathBuf]) -> Result<DiscoverySummary> 
         if !root.exists() || !root.is_dir() {
             continue;
         }
-        if blacklist_service::is_path_ignored(root).unwrap_or(false) {
+        if blacklist_service::is_path_ignored(root)? {
             continue;
         }
 
-        for game_dir in collect_candidate_game_dirs(root) {
-            if blacklist_service::is_path_ignored(&game_dir).unwrap_or(false) {
+        for game_dir in collect_candidate_game_dirs(root)? {
+            if blacklist_service::is_path_ignored(&game_dir)? {
                 continue;
             }
             if let Some(record) = game_record_from_dir(&game_dir) {
-                if blacklist_service::is_path_ignored(&record.active_save_dir).unwrap_or(false) {
+                if blacklist_service::is_path_ignored(&record.active_save_dir)? {
                     continue;
                 }
                 discovered.entry(record.id.clone()).or_insert(record);
@@ -114,17 +112,11 @@ fn canonical_game_root(mut dir: PathBuf, scan_root: &Path) -> PathBuf {
     dir
 }
 
-fn collect_candidate_game_dirs(root: &Path) -> Vec<PathBuf> {
+fn collect_candidate_game_dirs(root: &Path) -> Result<Vec<PathBuf>> {
     let mut game_roots = HashMap::<String, PathBuf>::new();
 
-    for entry in WalkDir::new(root)
-        .max_depth(5)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(Result::ok)
-    {
-        let path = entry.path();
-        if !path.is_file() || !is_save_like_extension(path) {
+    for path in walk_tree(root, 5)? {
+        if !path.is_file() || !is_save_like_extension(&path) {
             continue;
         }
         let Some(save_parent) = path.parent() else {
@@ -135,7 +127,7 @@ fn collect_candidate_game_dirs(root: &Path) -> Vec<PathBuf> {
         game_roots.entry(key).or_insert(game_root);
     }
 
-    normalize_and_dedup_paths(game_roots.into_values().collect())
+    Ok(normalize_and_dedup_paths(game_roots.into_values().collect()))
 }
 
 /// Save-like file discovered under a user-selected directory (for add-game / rescan UI).
@@ -156,21 +148,12 @@ pub fn scan_save_files_in_directory(root: &Path) -> Result<Vec<DiscoveredSaveFil
         return Ok(files);
     }
 
-    for entry in WalkDir::new(root)
-        .max_depth(4)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(Result::ok)
-    {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        if !is_save_like_extension(path) {
+    for path in walk_tree(root, 4)? {
+        if !path.is_file() || !is_save_like_extension(&path) {
             continue;
         }
 
-        let metadata = fs::metadata(path)?;
+        let metadata = fs::metadata(&path)?;
         let modified_at = metadata
             .modified()
             .map(chrono::DateTime::<Utc>::from)
@@ -179,7 +162,12 @@ pub fn scan_save_files_in_directory(root: &Path) -> Result<Vec<DiscoveredSaveFil
         let relative_path = path
             .strip_prefix(root)
             .map(|p| p.to_string_lossy().replace('\\', "/"))
-            .unwrap_or_else(|_| path.file_name().unwrap_or_default().to_string_lossy().to_string());
+            .unwrap_or_else(|_| {
+                path.file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string()
+            });
 
         files.push(DiscoveredSaveFile {
             name: path
@@ -295,7 +283,7 @@ mod tests {
     fn unique_temp_dir(prefix: &str) -> PathBuf {
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("clock before unix epoch")
+            .unwrap_or_default()
             .as_nanos();
         let dir = std::env::temp_dir().join(format!("slotforge_{prefix}_{ts}"));
         fs::create_dir_all(&dir).expect("create temp dir");

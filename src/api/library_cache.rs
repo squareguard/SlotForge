@@ -35,6 +35,7 @@ pub fn save(library: &LibraryStateDto) -> Result<()> {
         version: CACHE_VERSION,
         saved_at: Utc::now(),
         games: LibraryStateDto {
+            // Clone library fields; omit last_swap so rollback state is not persisted in cache.
             games: library.games.clone(),
             vault_by_game_id: library.vault_by_game_id.clone(),
             last_swap: None,

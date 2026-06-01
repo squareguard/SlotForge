@@ -1,3 +1,5 @@
+//! Game records discovered automatically or added manually by the user.
+
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};

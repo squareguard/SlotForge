@@ -100,6 +100,9 @@ pub fn get_scan_paths() -> Result<Vec<PathBuf>> {
 }
 
 pub fn add_scan_path(raw_path: &str) -> Result<AppConfig> {
+    if raw_path.trim().is_empty() {
+        anyhow::bail!("scan path cannot be empty");
+    }
     let mut config = ensure_initialized()?;
     let resolved = resolve_path(raw_path);
     config.scan_paths.push(resolved);
@@ -138,11 +141,15 @@ pub fn get_vault_root() -> Result<PathBuf> {
 }
 
 pub fn set_vault_root(raw_path: &str) -> Result<AppConfig> {
+    if raw_path.trim().is_empty() {
+        anyhow::bail!("vault root path cannot be empty");
+    }
     let mut config = ensure_initialized()?;
     let resolved = resolve_path(raw_path);
     if resolved.as_os_str().is_empty() {
         anyhow::bail!("vault root path cannot be empty");
     }
+    crate::platform::fs::ensure_directory(&resolved)?;
     config.vault_root = resolved;
     save_to_path(&config_path(), &config)?;
     Ok(config)

@@ -179,6 +179,7 @@ pub fn run_self_test() -> Result<()> {
     let config_path = temp_root.join("config.json");
     let vault_root = temp_root.join("vault");
     fs::create_dir_all(&vault_root)?;
+    // SAFETY: self-test only (SLOTFORGE_SELF_TEST=1); redirects config to an isolated temp file.
     unsafe {
         std::env::set_var("SLOTFORGE_CONFIG_PATH", config_path.to_string_lossy().to_string());
     }
@@ -226,7 +227,9 @@ pub fn run_self_test() -> Result<()> {
 
     crate::services::library_service::remove_manual_game(&game.id)?;
 
-    fs::remove_dir_all(&temp_root).ok();
+    if let Err(err) = fs::remove_dir_all(&temp_root) {
+        eprintln!("self-test: failed to remove temp dir {}: {err}", temp_root.display());
+    }
     unsafe {
         std::env::remove_var("SLOTFORGE_CONFIG_PATH");
     }
@@ -236,7 +239,7 @@ pub fn run_self_test() -> Result<()> {
 fn unique_temp_dir(prefix: &str) -> PathBuf {
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("clock before unix epoch")
+        .unwrap_or_default()
         .as_nanos();
     std::env::temp_dir().join(format!("slotforge_{prefix}_{ts}"))
 }

@@ -25,14 +25,20 @@ use crate::ui::screens::library_screen::{self, LibraryFilters};
 
 static VERIFIED_IDS: std::sync::Mutex<Option<HashMap<String, bool>>> = std::sync::Mutex::new(None);
 
+fn require_non_empty_id<'a>(value: &'a str, label: &str) -> Result<&'a str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("{label} is required.");
+    }
+    Ok(trimmed)
+}
+
 fn verified_cache() -> Result<HashMap<String, bool>> {
     let mut guard = VERIFIED_IDS
         .lock()
         .map_err(|_| anyhow::anyhow!("integrity cache lock poisoned"))?;
-    if guard.is_none() {
-        *guard = Some(HashMap::new());
-    }
-    Ok(guard.as_mut().unwrap().clone())
+    // Clone so callers can read without holding the mutex across library rebuilds.
+    Ok(guard.get_or_insert_with(HashMap::new).clone())
 }
 
 fn set_verified(save_id: &str, ok: bool) -> Result<()> {
@@ -85,17 +91,22 @@ pub fn add_game(name: &str, active_save_dir: &str) -> Result<AddGameResultDto> {
         anyhow::bail!("Game path is required.");
     }
 
+    let resolved = crate::platform::fs::resolve_path(active_save_dir);
+    crate::platform::fs::validate_directory(&resolved)?;
+
     library_service::add_manual_game(name, active_save_dir)?;
     let library = build_library_state()?;
+    let resolved_key = library_service::identity_key_for_path(&resolved);
     let game = library
         .games
         .iter()
-        .find(|g| g.active_save_dir.eq_ignore_ascii_case(active_save_dir))
+        .find(|g| {
+            library_service::identity_key_for_path(Path::new(&g.active_save_dir)) == resolved_key
+        })
         .cloned()
         .context("added game not found in library")?;
 
-    let discovered_count =
-        discovery_service::scan_save_files_in_directory(Path::new(active_save_dir))?.len();
+    let discovered_count = discovery_service::scan_save_files_in_directory(&resolved)?.len();
 
     Ok(AddGameResultDto {
         library,
@@ -105,6 +116,7 @@ pub fn add_game(name: &str, active_save_dir: &str) -> Result<AddGameResultDto> {
 }
 
 pub fn backup_game(game_id: &str, label: Option<String>, note: Option<String>) -> Result<BackupResultDto> {
+    let game_id = require_non_empty_id(game_id, "Game id")?;
     let game = find_game(game_id)?;
     let records = vault_service::backup_active_saves_for_game(&game)?;
 
@@ -141,6 +153,7 @@ pub fn restore_snapshot(
     resolution_choice: Option<ResolutionChoice>,
     confirmed_destructive: bool,
 ) -> Result<RestoreResultDto> {
+    let snapshot_id = require_non_empty_id(snapshot_id, "Snapshot id")?;
     let (game, snapshot) = find_game_and_snapshot(snapshot_id)?;
     if snapshot.origin != SaveOrigin::Vault {
         anyhow::bail!("Only vault snapshots can be restored to the active directory.");
@@ -179,6 +192,7 @@ pub fn rollback_swap() -> Result<LibraryStateDto> {
 }
 
 pub fn verify_snapshot(snapshot_id: &str) -> Result<SnapshotResultDto> {
+    let snapshot_id = require_non_empty_id(snapshot_id, "Snapshot id")?;
     let (_, snapshot) = find_game_and_snapshot(snapshot_id)?;
     let path = PathBuf::from(&snapshot.absolute_path);
     if !path.is_file() {
@@ -186,6 +200,7 @@ pub fn verify_snapshot(snapshot_id: &str) -> Result<SnapshotResultDto> {
     }
 
     let fresh = metadata_service::collect_metadata(&path)?;
+    // Missing hash on either side cannot be compared; treat as verified (legacy snapshots).
     let ok = snapshot
         .metadata
         .sha256
@@ -208,9 +223,11 @@ pub fn verify_snapshot(snapshot_id: &str) -> Result<SnapshotResultDto> {
 }
 
 pub fn verify_all_snapshots(game_id: &str) -> Result<VerifyAllResultDto> {
+    let game_id = require_non_empty_id(game_id, "Game id")?;
     let game = find_game(game_id)?;
     let saves = vault_service::list_vault_saves_for_game(&game)?;
     let mut verified_count = 0usize;
+    // Best-effort: count successes; individual verify failures are skipped (library still returned).
     for save in saves {
         if verify_snapshot(&save.id).is_ok() {
             verified_count += 1;
@@ -229,6 +246,7 @@ pub fn update_annotation(
     note: Option<String>,
     label_color: Option<String>,
 ) -> Result<SnapshotResultDto> {
+    let snapshot_id = require_non_empty_id(snapshot_id, "Snapshot id")?;
     let color_only = label.is_none() && note.is_none() && label_color.is_some();
     if color_only {
         vault_service::set_label_color(
@@ -250,6 +268,7 @@ pub fn update_annotation(
 }
 
 pub fn delete_snapshot(snapshot_id: &str, confirmed: bool) -> Result<LibraryStateDto> {
+    let snapshot_id = require_non_empty_id(snapshot_id, "Snapshot id")?;
     let (_, snapshot) = find_game_and_snapshot(snapshot_id)?;
     if snapshot.origin != SaveOrigin::Vault {
         anyhow::bail!("Only vault snapshots can be deleted from the vault.");
@@ -271,7 +290,13 @@ pub fn delete_snapshot(snapshot_id: &str, confirmed: bool) -> Result<LibraryStat
 }
 
 pub fn scan_save_directory(path: &str) -> Result<Vec<DiscoveredSaveFile>> {
-    discovery_service::scan_save_files_in_directory(Path::new(path.trim()))
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("Directory path is required.");
+    }
+    let resolved = crate::platform::fs::resolve_path(trimmed);
+    crate::platform::fs::validate_directory(&resolved)?;
+    discovery_service::scan_save_files_in_directory(&resolved)
 }
 
 pub fn list_ignored_games() -> Result<IgnoredListDto> {
@@ -293,6 +318,7 @@ pub fn remove_ignored_path(path: &str) -> Result<IgnoredListDto> {
 }
 
 pub fn ignore_game_from_library(game_id: &str) -> Result<IgnoreGameResultDto> {
+    let game_id = require_non_empty_id(game_id, "Game id")?;
     let game = find_game(game_id)?;
     let entry = blacklist_service::ignore_game(&game)?;
     if game.source == crate::domain::game::GameSource::UserAdded {
@@ -306,6 +332,7 @@ pub fn ignore_game_from_library(game_id: &str) -> Result<IgnoreGameResultDto> {
 }
 
 pub fn destructive_restore_warning(snapshot_id: &str) -> Result<String> {
+    let snapshot_id = require_non_empty_id(snapshot_id, "Snapshot id")?;
     let (game, snapshot) = find_game_and_snapshot(snapshot_id)?;
     let vault_record = snapshot_record_from_dto(&game, &snapshot)?;
     let active_path = game.active_save_dir.join(&snapshot.file_name);

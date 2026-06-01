@@ -1,3 +1,5 @@
+//! Stable API surface for the Tauri desktop shell and integration tests.
+
 pub mod dto;
 pub mod error;
 pub mod facade;

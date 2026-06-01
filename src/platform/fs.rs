@@ -47,6 +47,34 @@ pub fn ensure_directory(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Ensures `path` exists and is a directory (after expand/normalize).
+pub fn validate_directory(path: &Path) -> Result<()> {
+    if !path.exists() {
+        anyhow::bail!("directory does not exist: {}", path.display());
+    }
+    if !path.is_dir() {
+        anyhow::bail!("path is not a directory: {}", path.display());
+    }
+    Ok(())
+}
+
+/// Walks `root` up to `max_depth`, returning all paths; propagates walk errors.
+pub fn walk_tree(root: &Path, max_depth: u32) -> Result<Vec<PathBuf>> {
+    use walkdir::WalkDir;
+
+    let mut paths = Vec::new();
+    for entry in WalkDir::new(root)
+        .max_depth(max_depth as usize)
+        .follow_links(false)
+    {
+        let entry = entry.with_context(|| {
+            format!("failed to read directory entry under {}", root.display())
+        })?;
+        paths.push(entry.into_path());
+    }
+    Ok(paths)
+}
+
 pub fn normalize_and_dedup_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut seen = HashSet::new();
     let mut deduped = Vec::new();

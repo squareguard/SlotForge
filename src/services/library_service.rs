@@ -7,7 +7,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::domain::game::{GameRecord, GameSource};
-use crate::platform::fs::{ensure_directory, resolve_path};
+use crate::platform::fs::{ensure_directory, resolve_path, validate_directory};
 use crate::services::blacklist_service;
 use crate::services::discovery_service::DiscoverySummary;
 
@@ -64,6 +64,7 @@ pub fn add_manual_game(name: &str, raw_save_dir: &str) -> Result<GameRecord> {
     if save_dir.as_os_str().is_empty() {
         anyhow::bail!("manual save path cannot be empty");
     }
+    validate_directory(&save_dir)?;
 
     let now = Utc::now();
     let id = format!(
@@ -115,6 +116,7 @@ pub fn edit_manual_game(game_id: &str, new_name: &str, new_raw_save_dir: &str) -
     if save_dir.as_os_str().is_empty() {
         anyhow::bail!("manual save path cannot be empty");
     }
+    validate_directory(&save_dir)?;
 
     let mut registry = load_registry()?;
     let Some(existing) = registry.games.iter_mut().find(|game| game.id == game_id) else {
@@ -169,5 +171,12 @@ fn registry_path() -> PathBuf {
 }
 
 fn identity_key(path: &std::path::Path) -> String {
-    path.to_string_lossy().to_lowercase()
+    identity_key_for_path(path)
+}
+
+/// Stable key for matching games by save directory (used by API facade).
+pub fn identity_key_for_path(path: &std::path::Path) -> String {
+    crate::platform::fs::normalize_path(path)
+        .to_string_lossy()
+        .to_lowercase()
 }

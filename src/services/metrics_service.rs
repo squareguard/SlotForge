@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 use crate::platform::fs::ensure_directory;
 use crate::services::config_service;
@@ -115,6 +116,23 @@ pub fn record_operation(
     }
     registry.updated_at = Utc::now();
     save_registry(&registry)
+}
+
+/// Records metrics without failing the caller; logs persistence errors.
+pub fn record_operation_best_effort(
+    operation: MetricOperation,
+    success: bool,
+    user_error: bool,
+    recovered_after_failure: bool,
+) {
+    if let Err(err) = record_operation(
+        operation,
+        success,
+        user_error,
+        recovered_after_failure,
+    ) {
+        warn!("failed to record metrics for {operation:?}: {err:#}");
+    }
 }
 
 pub fn read_snapshot() -> Result<MetricsSnapshot> {
@@ -268,7 +286,10 @@ mod tests {
         assert!((snapshot.swap_failure_rate - 0.5).abs() < f64::EPSILON);
         assert!((snapshot.user_error_recoverability_rate - 1.0).abs() < f64::EPSILON);
 
-        let metrics_path = config_path.parent().unwrap().join("metrics.json");
+        let metrics_path = config_path
+            .parent()
+            .expect("temp config path should have a parent directory")
+            .join("metrics.json");
         let _ = fs::remove_file(metrics_path);
         let _ = fs::remove_file(config_path);
         unsafe { std::env::remove_var("SLOTFORGE_CONFIG_PATH") };
@@ -302,7 +323,7 @@ mod tests {
     fn unique_temp_file(prefix: &str) -> std::path::PathBuf {
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("clock before unix epoch")
+            .unwrap_or_default()
             .as_nanos();
         std::env::temp_dir().join(format!("slotforge_{prefix}_{ts}.json"))
     }

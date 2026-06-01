@@ -32,25 +32,34 @@ pub fn load_last_swap() -> Result<Option<LastSwapSession>> {
     if !path.exists() {
         return Ok(None);
     }
-    let raw = fs::read_to_string(&path)?;
-    let session: LastSwapSession = serde_json::from_str(&raw)?;
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read last swap session at {}", path.display()))?;
+    let session: LastSwapSession = serde_json::from_str(&raw)
+        .with_context(|| format!("failed to parse last swap session at {}", path.display()))?;
     Ok(Some(session))
 }
 
 pub fn save_last_swap(session: &LastSwapSession) -> Result<()> {
     let path = session_path()?;
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create directory for last swap session at {}",
+                parent.display()
+            )
+        })?;
     }
-    let raw = serde_json::to_string_pretty(session)?;
-    fs::write(path, raw)?;
+    let raw = serde_json::to_string_pretty(session).context("failed to serialize last swap session")?;
+    fs::write(&path, raw)
+        .with_context(|| format!("failed to write last swap session at {}", path.display()))?;
     Ok(())
 }
 
 pub fn clear_last_swap() -> Result<()> {
     let path = session_path()?;
     if path.exists() {
-        fs::remove_file(path)?;
+        fs::remove_file(&path)
+            .with_context(|| format!("failed to remove last swap session at {}", path.display()))?;
     }
     Ok(())
 }

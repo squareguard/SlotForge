@@ -187,10 +187,10 @@ pub fn execute_swap_transaction(request: &SwapTransactionRequest) -> Result<Swap
 
     match &outcome {
         Ok(_) => {
-            let _ = metrics_service::record_operation(MetricOperation::Swap, true, false, false);
+            metrics_service::record_operation_best_effort(MetricOperation::Swap, true, false, false);
         }
         Err(err) => {
-            let _ = metrics_service::record_operation(
+            metrics_service::record_operation_best_effort(
                 MetricOperation::Swap,
                 false,
                 metrics_service::is_likely_user_error(&err.to_string()),
@@ -231,7 +231,12 @@ fn can_write_to_dir(path: &Path) -> bool {
 fn stage_existing_active_save(game: &GameRecord, active_path: &Path) -> Result<PathBuf> {
     let config = config_service::ensure_initialized()?;
     let game_vault_dir = config.vault_root.join(sanitize_segment(&game.name));
-    fs::create_dir_all(&game_vault_dir)?;
+    fs::create_dir_all(&game_vault_dir).with_context(|| {
+        format!(
+            "failed to create vault staging directory {}",
+            game_vault_dir.display()
+        )
+    })?;
 
     let file_name = active_path
         .file_name()
@@ -495,7 +500,7 @@ mod tests {
     fn unique_temp_file(prefix: &str) -> std::path::PathBuf {
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("clock before unix epoch")
+            .unwrap_or_default()
             .as_nanos();
         std::env::temp_dir().join(format!("slotforge_{prefix}_{ts}.json"))
     }

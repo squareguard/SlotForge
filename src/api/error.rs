@@ -1,6 +1,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
+/// Error payload returned to the desktop UI when `ok` is false.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiErrorBody {
@@ -10,6 +11,7 @@ pub struct ApiErrorBody {
     pub details: Option<Value>,
 }
 
+/// Uniform success/failure envelope for Tauri commands and the React client.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiResponse<T> {
@@ -42,9 +44,18 @@ impl<T> ApiResponse<T> {
     }
 }
 
+/// Maps service-layer failures into a serializable API envelope for Tauri/JS.
 pub fn from_anyhow<T>(result: anyhow::Result<T>) -> ApiResponse<T> {
     match result {
         Ok(data) => ApiResponse::success(data),
-        Err(err) => ApiResponse::failure("INTERNAL", err.to_string()),
+        Err(err) => ApiResponse::failure("INTERNAL", user_visible_error(&err)),
     }
+}
+
+/// Prefer the root cause message; avoid multi-line anyhow chains in the UI.
+fn user_visible_error(err: &anyhow::Error) -> String {
+    err.chain()
+        .last()
+        .map(|e| e.to_string())
+        .unwrap_or_else(|| err.to_string())
 }

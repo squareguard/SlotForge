@@ -182,6 +182,13 @@ fn ignore_game_from_library(args: GameIdArgs) -> ApiResponse<IgnoreGameResultDto
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if let Err(err) = run_app() {
+        eprintln!("SlotForge desktop failed to start: {err}");
+        std::process::exit(1);
+    }
+}
+
+fn run_app() -> Result<(), tauri::Error> {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
@@ -204,5 +211,4 @@ pub fn run() {
             ignore_game_from_library,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running SlotForge desktop");
 }

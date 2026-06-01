@@ -18,16 +18,13 @@ name = "slotforge"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
-dirs = "6"
+dirs = "6.0"
 fs2 = "0.4"
-rusqlite = { version = "0.32", features = ["bundled"] }
 sha2 = "0.10"
-thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-walkdir = "2"
+walkdir = "2.5"

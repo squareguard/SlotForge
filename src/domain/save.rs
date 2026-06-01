@@ -1,3 +1,5 @@
+//! Save file records (active directory or vault) and metadata used for integrity checks.
+
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};

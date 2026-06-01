@@ -1,3 +1,5 @@
+//! Save conflict comparison and user resolution choices for swap/restore.
+
 use serde::{Deserialize, Serialize};
 
 use crate::domain::save::SaveMetadata;

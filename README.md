@@ -13,6 +13,14 @@ SlotForge is a cross-platform desktop application for managing PC game save file
 - **Conflict handling** — Compare timestamps and SHA-256 hashes; policies are configurable (prompt, keep both, prefer newer).
 - **Safety** — Confirmations for destructive actions, preflight checks (permissions, disk space), audit logging, and MVP metrics.
 
+## Security (desktop)
+
+- **CSP** — Production builds use a restrictive Content Security Policy in `src-tauri/tauri.conf.json` (`script-src 'self'`, no `unsafe-eval`). Development uses a separate `devCsp` that allows the Vite dev server on port 8000.
+- **Capabilities** — Tauri v2 capabilities are minimal (`core:default`, `dialog:default`); there is no broad filesystem or shell scope.
+- **IPC** — The React UI calls only registered `slotforge::api` commands; paths and IDs are validated on the client and again in Rust before filesystem access.
+- **Vault deletes** — Deletes under the vault refuse paths outside the configured vault root.
+- **Devtools** — The main window sets `devtools: false` in `tauri.conf.json` so release builds do not expose the web inspector by default.
+
 ## Tech stack
 
 ### Backend (Rust)
@@ -20,14 +28,13 @@ SlotForge is a cross-platform desktop application for managing PC game save file
 | Area | Technology |
 |------|------------|
 | Language | [Rust](https://www.rust-lang.org/) (edition 2021) |
-| Errors | `anyhow`, `thiserror` |
+| Errors | `anyhow` |
 | Serialization | `serde`, `serde_json` |
 | Time | `chrono` |
 | Filesystem | `walkdir`, `fs2`, `dirs`, custom `platform::fs` helpers |
 | Integrity | `sha2` (SHA-256) |
 | Logging | `tracing`, `tracing-subscriber` |
-| Async runtime | `tokio` (available for future I/O-heavy work) |
-| Persistence | JSON config/registries; `rusqlite` is a dependency for planned SQLite storage |
+| Persistence | JSON config/registries (`config.json`, manual games, annotations, ignored list, library cache) |
 
 ### Frontend (React)
 
@@ -42,7 +49,7 @@ SlotForge is a cross-platform desktop application for managing PC game save file
 | IPC | Tauri commands in `src-tauri/` → `slotforge::api` facade → services |
 | Dev server | Port **8000** (embedded in Tauri dev via `tauri dev`) |
 
-The UI is a single self-contained module (`frontend/src/SlotForgeApp.jsx`) with custom components only (no MUI, Chakra, or shadcn). State lives in React (`useReducer` / hooks); there is no `localStorage` or `sessionStorage`. Backend calls go through `frontend/src/api/slotforgeApi.js`.
+The UI is centered on `frontend/src/SlotForgeApp.jsx` with custom components only (no MUI, Chakra, or shadcn). IPC and startup logic live in `frontend/src/hooks/` (`useSlotForgeBoot`, `useSlotForgeActions`); domain string enums are in `frontend/src/domainEnums.js`. State lives in React (`useReducer` / hooks); there is no `localStorage` or `sessionStorage`. Backend calls go through `frontend/src/api/slotforgeApi.js`.
 
 ### CI
 

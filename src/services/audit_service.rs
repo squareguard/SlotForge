@@ -1,6 +1,7 @@
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Once;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -38,11 +39,15 @@ pub struct AuditEvent {
     pub destination_path: Option<PathBuf>,
 }
 
+static LOGGING: Once = Once::new();
+
 pub fn init_logging() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .with_target(false)
-        .try_init();
+    LOGGING.call_once(|| {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .with_target(false)
+            .try_init();
+    });
 }
 
 pub fn record_event(event: &AuditEvent) -> Result<()> {

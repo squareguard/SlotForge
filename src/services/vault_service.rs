@@ -4,12 +4,10 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use walkdir::WalkDir;
-
 use crate::domain::game::GameRecord;
 use crate::domain::conflict::{ConflictComparison, SaveFreshness};
 use crate::domain::save::{SaveOrigin, SaveRecord};
-use crate::platform::fs::ensure_directory;
+use crate::platform::fs::{ensure_directory, walk_tree};
 use crate::services::config_service;
 use crate::services::metrics_service::{self, MetricOperation};
 use crate::services::metadata_service;
@@ -93,10 +91,10 @@ pub fn backup_active_saves_for_game(game: &GameRecord) -> Result<Vec<SaveRecord>
 
     match &outcome {
         Ok(_) => {
-            let _ = metrics_service::record_operation(MetricOperation::Backup, true, false, false);
+            metrics_service::record_operation_best_effort(MetricOperation::Backup, true, false, false);
         }
         Err(err) => {
-            let _ = metrics_service::record_operation(
+            metrics_service::record_operation_best_effort(
                 MetricOperation::Backup,
                 false,
                 metrics_service::is_likely_user_error(&err.to_string()),
@@ -115,13 +113,7 @@ pub fn list_vault_saves_for_game(game: &GameRecord) -> Result<Vec<SaveRecord>> {
     }
 
     let mut records = Vec::new();
-    for entry in WalkDir::new(&game_vault_dir)
-        .max_depth(2)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(Result::ok)
-    {
-        let path = entry.path();
+    for path in walk_tree(&game_vault_dir, 2)? {
         if !path.is_file() {
             continue;
         }
@@ -130,7 +122,7 @@ pub fn list_vault_saves_for_game(game: &GameRecord) -> Result<Vec<SaveRecord>> {
             .file_name()
             .map(|v| v.to_string_lossy().to_string())
             .unwrap_or_else(|| "save.dat".to_string());
-        let metadata = metadata_service::collect_metadata(path)?;
+        let metadata = metadata_service::collect_metadata(&path)?;
 
         records.push(SaveRecord {
             id: format!("vault:{}:{}", game.id, path.to_string_lossy().to_lowercase()),
@@ -199,10 +191,10 @@ pub fn delete_save(request: DeleteRequest) -> Result<()> {
 
     match &outcome {
         Ok(_) => {
-            let _ = metrics_service::record_operation(MetricOperation::Delete, true, false, false);
+            metrics_service::record_operation_best_effort(MetricOperation::Delete, true, false, false);
         }
         Err(err) => {
-            let _ = metrics_service::record_operation(
+            metrics_service::record_operation_best_effort(
                 MetricOperation::Delete,
                 false,
                 metrics_service::is_likely_user_error(&err.to_string()),
@@ -348,15 +340,9 @@ fn collect_backup_candidates(active_dir: &Path) -> Result<Vec<PathBuf>> {
     }
 
     let mut files = Vec::new();
-    for entry in WalkDir::new(active_dir)
-        .max_depth(2)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(Result::ok)
-    {
-        let path = entry.path();
+    for path in walk_tree(active_dir, 2)? {
         if path.is_file() {
-            files.push(path.to_path_buf());
+            files.push(path);
         }
     }
     Ok(files)

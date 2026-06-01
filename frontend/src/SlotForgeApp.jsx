@@ -12,11 +12,18 @@ import {
   useRef,
   useState,
 } from "react";
+import { pickSaveDirectory, scanSaveDirectory, slotforgeApi, unexpectedError } from "./api/slotforgeApi.js";
 import {
-  pickSaveDirectory,
-  scanSaveDirectory,
-  slotforgeApi,
-} from "./api/slotforgeApi.js";
+  GameSource,
+  IntegrityStatus,
+  ResolutionChoice,
+  SaveFreshness,
+  SaveOrigin,
+} from "./domainEnums.js";
+import { useSlotForgeActions } from "./hooks/useSlotForgeActions.js";
+import { useSlotForgeBoot } from "./hooks/useSlotForgeBoot.js";
+
+export { GameSource, IntegrityStatus, ResolutionChoice, SaveFreshness, SaveOrigin };
 import {
   ChevronLeft,
   ChevronRight,
@@ -139,41 +146,6 @@ import {
  * @property {number} size
  * @property {string} modifiedAt ISO-8601
  */
-
-/** @enum {GameSource} */
-export const GameSource = {
-  AutoDiscovered: "AutoDiscovered",
-  UserAdded: "UserAdded",
-};
-
-/** @enum {SaveOrigin} */
-export const SaveOrigin = {
-  ActiveDirectory: "ActiveDirectory",
-  Vault: "Vault",
-};
-
-/** @enum {IntegrityStatus} */
-export const IntegrityStatus = {
-  Verified: "verified",
-  Corrupted: "corrupted",
-  Unchecked: "unchecked",
-};
-
-/** @enum {SaveFreshness} */
-export const SaveFreshness = {
-  SourceNewer: "SourceNewer",
-  DestinationNewer: "DestinationNewer",
-  Equal: "Equal",
-  Unknown: "Unknown",
-};
-
-/** @enum {ResolutionChoice} */
-export const ResolutionChoice = {
-  KeepSource: "KeepSource",
-  KeepDestination: "KeepDestination",
-  KeepBothRename: "KeepBothRename",
-  CancelOperation: "CancelOperation",
-};
 
 /** Label colour swatches for snapshot tags (vault filter + colour picker). */
 const LABEL_COLORS = ["#00f5ff", "#ffb800", "#a855f7", "#22c55e", "#ff2d55", "#f472b6"];
@@ -1638,14 +1610,21 @@ function AddGameModal({ open, onClose, onSubmit, loading }) {
     }
     setScanning(true);
     try {
-      const files = await scanSaveDirectory(trimmed);
-      setDiscovered(files);
-    } catch {
+      const result = await scanSaveDirectory(trimmed);
+      if (!result.ok) {
+        setDiscovered([]);
+        pushToast({ type: "error", message: result.error });
+        return;
+      }
+      setDiscovered(result.files);
+    } catch (err) {
       setDiscovered([]);
+      const message = err instanceof Error ? err.message : "Could not scan save folder.";
+      pushToast({ type: "error", message });
     } finally {
       setScanning(false);
     }
-  }, []);
+  }, [pushToast]);
 
   useEffect(() => {
     if (!open) return;
@@ -1802,6 +1781,32 @@ function BackupModal({ open, onClose, onConfirm, loading, progress }) {
 }
 
 function RestoreConfirmModal({ open, onClose, onConfirm, game, snapshot, loading, progress }) {
+  const [serverWarning, setServerWarning] = useState(/** @type {string | null} */ (null));
+  const [warningError, setWarningError] = useState(/** @type {string | null} */ (null));
+
+  useEffect(() => {
+    if (!open || !snapshot?.id) {
+      setServerWarning(null);
+      setWarningError(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const res = await slotforgeApi.destructiveRestoreWarning({ snapshotId: snapshot.id });
+      if (cancelled) return;
+      if (res.ok) {
+        setServerWarning(res.data);
+        setWarningError(null);
+      } else {
+        setServerWarning(null);
+        setWarningError(res.error.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, snapshot?.id]);
+
   if (!open || !snapshot || !game) return null;
 
   return (
@@ -1812,6 +1817,14 @@ function RestoreConfirmModal({ open, onClose, onConfirm, game, snapshot, loading
           This will overwrite active save files with vault snapshot <strong>{snapshot.label ?? snapshot.fileName}</strong>.
           This action cannot be undone except via rollback.
         </p>
+        {serverWarning ? (
+          <p className="mt-2 rounded border border-danger/30 bg-danger/5 p-2 font-mono text-[10px] text-danger">
+            {serverWarning}
+          </p>
+        ) : null}
+        {warningError ? (
+          <p className="mt-2 font-mono text-[10px] text-warning">Could not load restore details: {warningError}</p>
+        ) : null}
         {game.hasConflict && game.conflictFiles.length > 0 ? (
           <div className="mt-4 max-h-48 overflow-auto rounded border border-warning/30">
             <table className="w-full font-mono text-[10px]">
@@ -1898,13 +1911,18 @@ function IgnoredGamesModal({ open, onClose }) {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const res = await slotforgeApi.listIgnoredGames();
-    setLoading(false);
-    if (!res.ok) {
-      pushToast({ type: "error", message: res.error.message });
-      return;
+    try {
+      const res = await slotforgeApi.listIgnoredGames();
+      if (!res.ok) {
+        pushToast({ type: "error", message: res.error.message });
+        return;
+      }
+      setEntries(res.data.entries ?? []);
+    } catch (err) {
+      pushToast({ type: "error", message: unexpectedError(err) });
+    } finally {
+      setLoading(false);
     }
-    setEntries(res.data.entries ?? []);
   }, [pushToast]);
 
   useEffect(() => {
@@ -1913,8 +1931,12 @@ function IgnoredGamesModal({ open, onClose }) {
   }, [open, refresh]);
 
   const handlePickFolder = async () => {
-    const picked = await pickSaveDirectory();
-    if (picked) setNewPath(picked);
+    try {
+      const picked = await pickSaveDirectory();
+      if (picked) setNewPath(picked);
+    } catch (err) {
+      pushToast({ type: "error", message: unexpectedError(err) });
+    }
   };
 
   const handleAdd = async () => {
@@ -1924,29 +1946,38 @@ function IgnoredGamesModal({ open, onClose }) {
       return;
     }
     setAdding(true);
-    const res = await slotforgeApi.addIgnoredPath({
-      path,
-      name: newName.trim() || null,
-    });
-    setAdding(false);
-    if (!res.ok) {
-      pushToast({ type: "error", message: res.error.message });
-      return;
+    try {
+      const res = await slotforgeApi.addIgnoredPath({
+        path,
+        name: newName.trim() || null,
+      });
+      if (!res.ok) {
+        pushToast({ type: "error", message: res.error.message });
+        return;
+      }
+      setEntries(res.data.entries ?? []);
+      setNewPath("");
+      setNewName("");
+      pushToast({ type: "success", message: "Path added to ignored list." });
+    } catch (err) {
+      pushToast({ type: "error", message: unexpectedError(err) });
+    } finally {
+      setAdding(false);
     }
-    setEntries(res.data.entries ?? []);
-    setNewPath("");
-    setNewName("");
-    pushToast({ type: "success", message: "Path added to ignored list." });
   };
 
   const handleRemove = async (path) => {
-    const res = await slotforgeApi.removeIgnoredPath({ path });
-    if (!res.ok) {
-      pushToast({ type: "error", message: res.error.message });
-      return;
+    try {
+      const res = await slotforgeApi.removeIgnoredPath({ path });
+      if (!res.ok) {
+        pushToast({ type: "error", message: res.error.message });
+        return;
+      }
+      setEntries(res.data.entries ?? []);
+      pushToast({ type: "success", message: "Removed from ignored list. Rescan to show games again." });
+    } catch (err) {
+      pushToast({ type: "error", message: unexpectedError(err) });
     }
-    setEntries(res.data.entries ?? []);
-    pushToast({ type: "success", message: "Removed from ignored list. Rescan to show games again." });
   };
 
   if (!open) return null;
@@ -2294,325 +2325,34 @@ function SlotForgeAppInner() {
     });
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const bootScanDelayMs = 1000;
+  useSlotForgeBoot(applyLibrary, pushToast, dispatch);
 
-    (async () => {
-      const res = await slotforgeApi.loadLibrary();
-      if (cancelled) return;
-      if (!res.ok) {
-        pushToast({ type: "error", message: res.error.message });
-        return;
-      }
-      applyLibrary(res.data);
-
-      await new Promise((resolve) => setTimeout(resolve, bootScanDelayMs));
-      if (cancelled) return;
-
-      dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: true } });
-      const scanRes = await slotforgeApi.scanGamesBackground();
-      if (cancelled) return;
-      dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: false } });
-      if (!scanRes.ok) {
-        pushToast({ type: "error", message: scanRes.error.message });
-        return;
-      }
-      applyLibrary(scanRes.data);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [applyLibrary, pushToast]);
-
-  const handleScan = useCallback(async () => {
-    dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: true } });
-    const res = await slotforgeApi.scanGamesBackground();
-    dispatch({ type: "SET_LOADING", payload: { key: "scanning", value: false } });
-    if (!res.ok) {
-      logOp("scan", "failure", res.error.message);
-      pushToast({ type: "error", message: res.error.message });
-      return;
-    }
-    applyLibrary(res.data);
-    logOp("scan", "success", `Library has ${res.data.games.length} game(s).`);
-    pushToast({ type: "success", message: "Scan complete." });
-  }, [applyLibrary, logOp, pushToast]);
-
-  const handleRescanActive = useCallback(async () => {
-    if (!selectedGame) return;
-    setRescanningActive(true);
-    try {
-      const files = await scanSaveDirectory(selectedGame.activeSaveDir);
-      const res = await slotforgeApi.loadLibrary();
-      if (res.ok) {
-        applyLibrary(res.data);
-        const list = res.data.vaultByGameId[selectedGame.id] ?? [];
-        const firstActive = list.find((s) => s.origin === SaveOrigin.ActiveDirectory);
-        if (firstActive) {
-          dispatch({ type: "SELECT_SNAPSHOT", payload: firstActive.id });
-        }
-      }
-      pushToast({
-        type: files.length > 0 ? "success" : "error",
-        message:
-          files.length > 0
-            ? `Found ${files.length} save file(s) in folder.`
-            : "No save files found in that folder.",
-      });
-    } finally {
-      setRescanningActive(false);
-    }
-  }, [selectedGame, applyLibrary, pushToast]);
-
-  const handleAddGame = useCallback(
-    async ({ name, activeSaveDir, discoveredFiles }) => {
-      dispatch({ type: "SET_LOADING", payload: { key: "addingGame", value: true } });
-      let files = Array.isArray(discoveredFiles) ? discoveredFiles : [];
-      if (files.length === 0 && activeSaveDir.trim()) {
-        files = await scanSaveDirectory(activeSaveDir);
-      }
-      const res = await slotforgeApi.addGame({ name, activeSaveDir });
-      dispatch({ type: "SET_LOADING", payload: { key: "addingGame", value: false } });
-      dispatch({ type: "CLOSE_MODAL", payload: "addGame" });
-      if (!res.ok) {
-        logOp("add_game", "failure", res.error.message);
-        pushToast({ type: "error", message: res.error.message });
-        return;
-      }
-      applyLibrary(res.data.library);
-      dispatch({ type: "SELECT_GAME", payload: res.data.game.id });
-      const count = res.data.discoveredCount ?? files.length;
-      logOp("add_game", "success", `Added ${res.data.game.name} (${count} save file(s)).`, res.data.game.id);
-      pushToast({
-        type: count > 0 ? "success" : "error",
-        message:
-          count > 0
-            ? `Added ${res.data.game.name} with ${count} save file(s).`
-            : `Added ${res.data.game.name}, but no save files were found in that folder.`,
-      });
-    },
-    [applyLibrary, logOp, pushToast]
-  );
-
-  const handleBackup = useCallback(
-    async ({ label, note }) => {
-      if (!state.selectedGameId) return;
-      dispatch({ type: "SET_LOADING", payload: { key: "backingUp", value: true } });
-      dispatch({
-        type: "SET_PROGRESS",
-        payload: { type: "backup", current: 0, total: 100, message: "Backing up…" },
-      });
-      const res = await slotforgeApi.backupGame({
-        gameId: state.selectedGameId,
-        label,
-        note,
-      });
-      dispatch({ type: "SET_LOADING", payload: { key: "backingUp", value: false } });
-      dispatch({ type: "CLOSE_MODAL", payload: "backup" });
-      dispatch({ type: "SET_PROGRESS", payload: { type: null, current: 0, total: 0, message: null } });
-      if (!res.ok) {
-        logOp("backup", "failure", res.error.message, state.selectedGameId);
-        pushToast({ type: "error", message: res.error.message });
-        return;
-      }
-      applyLibrary(res.data.library);
-      dispatch({ type: "SELECT_SNAPSHOT", payload: res.data.snapshot.id });
-      logOp("backup", "success", "Backup created.", state.selectedGameId, res.data.snapshot.id);
-      pushToast({ type: "success", message: "Backup created." });
-    },
-    [state.selectedGameId, applyLibrary, logOp, pushToast]
-  );
-
-  const handleRestore = useCallback(async () => {
-    if (!selectedSnapshot) return;
-    dispatch({ type: "SET_LOADING", payload: { key: "restoring", value: true } });
-    const res = await slotforgeApi.restoreSnapshot({
-      snapshotId: selectedSnapshot.id,
-      confirmedDestructive: true,
-      resolutionChoice: ResolutionChoice.KeepSource,
-    });
-    dispatch({ type: "SET_LOADING", payload: { key: "restoring", value: false } });
-    dispatch({ type: "CLOSE_MODAL", payload: "restore" });
-    if (!res.ok) {
-      logOp("restore", "failure", res.error.message, selectedSnapshot.gameId, selectedSnapshot.id);
-      pushToast({ type: "error", message: res.error.message });
-      return;
-    }
-    applyLibrary(res.data.library);
-    dispatch({ type: "SET_LAST_SWAP", payload: res.data.lastSwap });
-    logOp("restore", "success", "Restored to active.", selectedSnapshot.gameId, selectedSnapshot.id);
-    pushToast({ type: "success", message: "Restore complete. Rollback available." });
-  }, [selectedSnapshot, applyLibrary, logOp, pushToast]);
-
-  const handleRollback = useCallback(async () => {
-    if (!state.operations.lastSwap) return;
-    dispatch({ type: "SET_LOADING", payload: { key: "rollingBack", value: true } });
-    const res = await slotforgeApi.rollbackSwap();
-    dispatch({ type: "SET_LOADING", payload: { key: "rollingBack", value: false } });
-    if (!res.ok) {
-      logOp("rollback", "failure", res.error.message);
-      pushToast({ type: "error", message: res.error.message });
-      return;
-    }
-    applyLibrary(res.data);
-    dispatch({ type: "SET_LAST_SWAP", payload: null });
-    logOp("rollback", "success", "Rollback complete.");
-    pushToast({ type: "success", message: "Rollback complete." });
-  }, [state.operations.lastSwap, applyLibrary, logOp, pushToast]);
-
-  const handleVerifySnapshot = useCallback(
-    async (snapshotId) => {
-      dispatch({ type: "SET_LOADING", payload: { key: "verifying", value: true } });
-      const res = await slotforgeApi.verifySnapshot({ snapshotId });
-      dispatch({ type: "SET_LOADING", payload: { key: "verifying", value: false } });
-      if (!res.ok) {
-        logOp("verify", "failure", res.error.message, null, snapshotId);
-        pushToast({ type: "error", message: res.error.message });
-        return;
-      }
-      applyLibrary(res.data.library);
-      logOp("verify", "success", `Integrity: ${res.data.snapshot.integrity}.`, null, snapshotId);
-      pushToast({ type: "success", message: `Verified: ${res.data.snapshot.integrity}` });
-    },
-    [applyLibrary, logOp, pushToast]
-  );
-
-  const handleVerifyAll = useCallback(async () => {
-    if (!state.selectedGameId) return;
-    dispatch({ type: "SET_LOADING", payload: { key: "batchVerifying", value: true } });
-    const list = state.vaultByGameId[state.selectedGameId] ?? [];
-    dispatch({
-      type: "SET_PROGRESS",
-      payload: { type: "verify_all", current: 0, total: list.length, message: "Verifying…" },
-    });
-    const res = await slotforgeApi.verifyAllSnapshots({ gameId: state.selectedGameId });
-    dispatch({ type: "SET_LOADING", payload: { key: "batchVerifying", value: false } });
-    dispatch({ type: "SET_PROGRESS", payload: { type: null, current: 0, total: 0, message: null } });
-    if (!res.ok) {
-      logOp("verify_all", "failure", res.error.message, state.selectedGameId);
-      pushToast({ type: "error", message: res.error.message });
-      return;
-    }
-    applyLibrary(res.data.library);
-    logOp("verify_all", "success", `Verified ${res.data.verifiedCount} snapshot(s).`, state.selectedGameId);
-    pushToast({ type: "success", message: `Verified ${res.data.verifiedCount} snapshot(s).` });
-  }, [state.selectedGameId, state.vaultByGameId, applyLibrary, logOp, pushToast]);
-
-  const colorSaveTimersRef = useRef(new Map());
-  const annotationChainRef = useRef(Promise.resolve());
-
-  const findGameIdForSnapshot = useCallback(
-    (snapshotId) => {
-      for (const [gameId, list] of Object.entries(state.vaultByGameId)) {
-        if (list.some((s) => s.id === snapshotId)) return gameId;
-      }
-      return state.selectedGameId;
-    },
-    [state.vaultByGameId, state.selectedGameId]
-  );
-
-  const persistAnnotation = useCallback(
-    (snapshotId, patch) => {
-      annotationChainRef.current = annotationChainRef.current.then(async () => {
-        const res = await slotforgeApi.updateAnnotation({ snapshotId, ...patch });
-        if (!res.ok) {
-          pushToast({ type: "error", message: res.error.message });
-          return;
-        }
-        const isColorOnly =
-          patch.labelColor != null && !("label" in patch) && !("note" in patch);
-        if (isColorOnly) {
-          const snap = res.data.snapshot;
-          dispatch({
-            type: "PATCH_SNAPSHOT",
-            payload: { gameId: snap.gameId, snapshotId: snap.id, patch: snap },
-          });
-        } else {
-          applyLibrary(res.data.library);
-          logOp("annotate", "success", "Annotation saved.", null, snapshotId);
-        }
-      });
-    },
-    [applyLibrary, logOp, pushToast]
-  );
-
-  const handleAnnotation = useCallback(
-    (snapshotId, gameId, patch) => {
-      const isColorOnly =
-        patch.labelColor != null && !("label" in patch) && !("note" in patch);
-
-      if (isColorOnly) {
-        const resolvedGameId = gameId ?? findGameIdForSnapshot(snapshotId);
-        if (resolvedGameId) {
-          dispatch({
-            type: "PATCH_SNAPSHOT",
-            payload: {
-              gameId: resolvedGameId,
-              snapshotId,
-              patch: { labelColor: patch.labelColor },
-            },
-          });
-        }
-        const existing = colorSaveTimersRef.current.get(snapshotId);
-        if (existing) clearTimeout(existing);
-        colorSaveTimersRef.current.set(
-          snapshotId,
-          setTimeout(() => {
-            colorSaveTimersRef.current.delete(snapshotId);
-            persistAnnotation(snapshotId, patch);
-          }, 300)
-        );
-        return;
-      }
-
-      persistAnnotation(snapshotId, patch);
-    },
-    [findGameIdForSnapshot, persistAnnotation]
-  );
-
-  const handleDelete = useCallback(async () => {
-    if (!selectedSnapshot) return;
-    dispatch({ type: "SET_LOADING", payload: { key: "deleting", value: true } });
-    const res = await slotforgeApi.deleteSnapshot({
-      snapshotId: selectedSnapshot.id,
-      confirmed: true,
-    });
-    dispatch({ type: "SET_LOADING", payload: { key: "deleting", value: false } });
-    dispatch({ type: "CLOSE_MODAL", payload: "delete" });
-    if (!res.ok) {
-      logOp("delete", "failure", res.error.message, selectedSnapshot.gameId, selectedSnapshot.id);
-      pushToast({ type: "error", message: res.error.message });
-      return;
-    }
-    applyLibrary(res.data);
-    logOp("delete", "success", "Snapshot deleted.", selectedSnapshot.gameId, selectedSnapshot.id);
-    pushToast({ type: "success", message: "Snapshot deleted." });
-  }, [selectedSnapshot, applyLibrary, logOp, pushToast]);
-
-  const handleRemoveGame = useCallback(
-    async (gameId) => {
-      setGameContextMenu(null);
-      setRemovingGame(true);
-      const res = await slotforgeApi.ignoreGameFromLibrary({ gameId });
-      setRemovingGame(false);
-      if (!res.ok) {
-        pushToast({ type: "error", message: res.error.message });
-        return;
-      }
-      applyLibrary(res.data.library);
-      const stillSelected = res.data.library.games.some((g) => g.id === state.selectedGameId);
-      if (!stillSelected) {
-        dispatch({ type: "SELECT_GAME", payload: res.data.library.games[0]?.id ?? null });
-      }
-      pushToast({
-        type: "success",
-        message: "Game removed from library and added to ignored list. Files on disk were not deleted.",
-      });
-    },
-    [applyLibrary, pushToast, state.selectedGameId]
-  );
+  const {
+    handleScan,
+    handleRescanActive,
+    handleAddGame,
+    handleBackup,
+    handleRestore,
+    handleRollback,
+    handleVerifySnapshot,
+    handleVerifyAll,
+    handleAnnotation,
+    handleDelete,
+    handleRemoveGame,
+  } = useSlotForgeActions({
+    dispatch,
+    selectedGameId: state.selectedGameId,
+    vaultByGameId: state.vaultByGameId,
+    lastSwap: state.operations.lastSwap,
+    selectedGame,
+    selectedSnapshot,
+    applyLibrary,
+    logOp,
+    pushToast,
+    setRescanningActive,
+    setGameContextMenu,
+    setRemovingGame,
+  });
 
   const sidebarCollapsed = state.ui.panels.sidebarCollapsed;
   const detailCollapsed = state.ui.panels.detailCollapsed;

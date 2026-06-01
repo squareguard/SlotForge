@@ -1,3 +1,5 @@
+//! SlotForge core library: save discovery, vault, swap/restore, and CLI/desktop API.
+
 pub mod api;
 pub mod app;
 pub mod domain;
