@@ -8,4 +8,7 @@ pub mod services;
 pub mod storage;
 pub mod ui;
 
+#[cfg(test)]
+mod test_support;
+
 pub use app::run;

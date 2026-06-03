@@ -201,9 +201,18 @@ mod tests {
 
     #[test]
     fn paths_overlap_exact_and_child() {
-        let parent = PathBuf::from(r"C:\Games\Cyberpunk");
-        let child = PathBuf::from(r"C:\Games\Cyberpunk\Saves\slot1");
-        let sibling = PathBuf::from(r"C:\Games\Cyberpunk2077");
+        #[cfg(windows)]
+        let (parent, child, sibling) = (
+            PathBuf::from(r"C:\Games\Cyberpunk"),
+            PathBuf::from(r"C:\Games\Cyberpunk\Saves\slot1"),
+            PathBuf::from(r"C:\Games\Cyberpunk2077"),
+        );
+        #[cfg(not(windows))]
+        let (parent, child, sibling) = (
+            PathBuf::from("/games/cyberpunk"),
+            PathBuf::from("/games/cyberpunk/saves/slot1"),
+            PathBuf::from("/games/cyberpunk2077"),
+        );
 
         assert!(paths_overlap(&parent, &parent));
         assert!(paths_overlap(&child, &parent));

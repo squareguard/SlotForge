@@ -491,25 +491,19 @@ mod tests {
     #[test]
     fn policy_prefer_newer_prompts_on_equal() {
         let config_path = unique_temp_file("policy");
-        // SAFETY: tests run in-process; this test scopes and cleans up env override.
-        unsafe {
-            std::env::set_var(
-                "SLOTFORGE_CONFIG_PATH",
-                config_path.to_string_lossy().to_string(),
-            )
-        };
-        config_service::set_conflict_policy(ConflictPolicy::PreferNewerWithPromptOnEqual)
-            .expect("set policy");
+        crate::test_support::with_config_path(&config_path, || {
+            config_service::set_conflict_policy(ConflictPolicy::PreferNewerWithPromptOnEqual)
+                .expect("set policy");
 
-        let source = build_save("source", Utc::now(), "same");
-        let destination = build_save("dest", Utc::now() - Duration::minutes(4), "same");
-        let comparison = compare_for_swap(&source, &destination);
-        let choice =
-            resolve_conflict_choice(None, &comparison).expect("resolve by policy should succeed");
-        assert_eq!(choice, ResolutionChoice::CancelOperation);
+            let source = build_save("source", Utc::now(), "same");
+            let destination = build_save("dest", Utc::now() - Duration::minutes(4), "same");
+            let comparison = compare_for_swap(&source, &destination);
+            let choice = resolve_conflict_choice(None, &comparison)
+                .expect("resolve by policy should succeed");
+            assert_eq!(choice, ResolutionChoice::CancelOperation);
 
-        let _ = fs::remove_file(&config_path);
-        unsafe { std::env::remove_var("SLOTFORGE_CONFIG_PATH") };
+            let _ = fs::remove_file(&config_path);
+        });
     }
 
     fn build_save(id_suffix: &str, modified_at: chrono::DateTime<Utc>, sha: &str) -> SaveRecord {

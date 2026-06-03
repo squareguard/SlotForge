@@ -300,28 +300,23 @@ mod tests {
     #[test]
     fn computes_expected_success_and_failure_rates() {
         let config_path = unique_temp_file("metrics-config");
-        // SAFETY: scoped, test-only env var override with cleanup at the end.
-        unsafe {
-            std::env::set_var(
-                "SLOTFORGE_CONFIG_PATH",
-                config_path.to_string_lossy().to_string(),
-            )
-        };
+        crate::test_support::with_config_path(&config_path, || {
+            let metrics_path = super::metrics_registry_path();
+            let _ = fs::remove_file(&metrics_path);
 
-        record_operation(MetricOperation::Backup, true, false, false).expect("record backup");
-        record_operation(MetricOperation::Swap, false, true, true).expect("record failed swap");
-        record_operation(MetricOperation::Swap, true, false, false)
-            .expect("record successful swap");
+            record_operation(MetricOperation::Backup, true, false, false).expect("record backup");
+            record_operation(MetricOperation::Swap, false, true, true).expect("record failed swap");
+            record_operation(MetricOperation::Swap, true, false, false)
+                .expect("record successful swap");
 
-        let snapshot = read_snapshot().expect("read snapshot");
-        assert!((snapshot.operation_success_rate - (2.0 / 3.0)).abs() < f64::EPSILON);
-        assert!((snapshot.swap_failure_rate - 0.5).abs() < f64::EPSILON);
-        assert!((snapshot.user_error_recoverability_rate - 1.0).abs() < f64::EPSILON);
+            let snapshot = read_snapshot().expect("read snapshot");
+            assert!((snapshot.operation_success_rate - (2.0 / 3.0)).abs() < f64::EPSILON);
+            assert!((snapshot.swap_failure_rate - 0.5).abs() < f64::EPSILON);
+            assert!((snapshot.user_error_recoverability_rate - 1.0).abs() < f64::EPSILON);
 
-        let metrics_path = super::metrics_registry_path();
-        let _ = fs::remove_file(metrics_path);
-        let _ = fs::remove_file(config_path);
-        unsafe { std::env::remove_var("SLOTFORGE_CONFIG_PATH") };
+            let _ = fs::remove_file(metrics_path);
+            let _ = fs::remove_file(&config_path);
+        });
     }
 
     #[test]
