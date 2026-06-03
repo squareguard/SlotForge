@@ -14,7 +14,7 @@ Desktop app for backing up PC game saves, swapping between versions, and keeping
   <img src="public/images/3.png" alt="Settings and themes" width="48%" />
 </p>
 
-## What you get
+## What is SlotForge?
 
 - Scan common save locations (plus paths you add) and track games in a library sidebar
 - Back up active saves into a vault, label them, add notes, colour-code cards
