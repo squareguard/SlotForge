@@ -1,16 +1,16 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
-use chrono::Utc;
-use serde::{Deserialize, Serialize};
-use crate::domain::game::GameRecord;
 use crate::domain::conflict::{ConflictComparison, SaveFreshness};
+use crate::domain::game::GameRecord;
 use crate::domain::save::{SaveOrigin, SaveRecord};
 use crate::platform::fs::{ensure_directory, walk_tree};
 use crate::services::config_service;
-use crate::services::metrics_service::{self, MetricOperation};
 use crate::services::metadata_service;
+use crate::services::metrics_service::{self, MetricOperation};
+use anyhow::{Context, Result};
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct AnnotationRegistry {
@@ -70,7 +70,11 @@ pub fn backup_active_saves_for_game(game: &GameRecord) -> Result<Vec<SaveRecord>
             })?;
 
             records.push(SaveRecord {
-                id: format!("vault:{}:{}", game.id, destination.to_string_lossy().to_lowercase()),
+                id: format!(
+                    "vault:{}:{}",
+                    game.id,
+                    destination.to_string_lossy().to_lowercase()
+                ),
                 game_id: game.id.clone(),
                 file_name: destination
                     .file_name()
@@ -91,7 +95,12 @@ pub fn backup_active_saves_for_game(game: &GameRecord) -> Result<Vec<SaveRecord>
 
     match &outcome {
         Ok(_) => {
-            metrics_service::record_operation_best_effort(MetricOperation::Backup, true, false, false);
+            metrics_service::record_operation_best_effort(
+                MetricOperation::Backup,
+                true,
+                false,
+                false,
+            );
         }
         Err(err) => {
             metrics_service::record_operation_best_effort(
@@ -125,7 +134,11 @@ pub fn list_vault_saves_for_game(game: &GameRecord) -> Result<Vec<SaveRecord>> {
         let metadata = metadata_service::collect_metadata(&path)?;
 
         records.push(SaveRecord {
-            id: format!("vault:{}:{}", game.id, path.to_string_lossy().to_lowercase()),
+            id: format!(
+                "vault:{}:{}",
+                game.id,
+                path.to_string_lossy().to_lowercase()
+            ),
             game_id: game.id.clone(),
             file_name,
             absolute_path: path.to_path_buf(),
@@ -138,7 +151,7 @@ pub fn list_vault_saves_for_game(game: &GameRecord) -> Result<Vec<SaveRecord>> {
         });
     }
 
-    records.sort_by(|a, b| b.metadata.modified_at.cmp(&a.metadata.modified_at));
+    records.sort_by_key(|b| std::cmp::Reverse(b.metadata.modified_at));
     apply_annotations(records)
 }
 
@@ -191,7 +204,12 @@ pub fn delete_save(request: DeleteRequest) -> Result<()> {
 
     match &outcome {
         Ok(_) => {
-            metrics_service::record_operation_best_effort(MetricOperation::Delete, true, false, false);
+            metrics_service::record_operation_best_effort(
+                MetricOperation::Delete,
+                true,
+                false,
+                false,
+            );
         }
         Err(err) => {
             metrics_service::record_operation_best_effort(
@@ -316,7 +334,9 @@ pub fn compare_saves(source: &SaveRecord, destination: &SaveRecord) -> ConflictC
     };
 
     let reason = match freshness {
-        SaveFreshness::Equal => "timestamps and/or hashes indicate files are equivalent".to_string(),
+        SaveFreshness::Equal => {
+            "timestamps and/or hashes indicate files are equivalent".to_string()
+        }
         SaveFreshness::SourceNewer => "source file has newer modification timestamp".to_string(),
         SaveFreshness::DestinationNewer => {
             "destination file has newer modification timestamp".to_string()
@@ -336,7 +356,10 @@ pub fn compare_saves(source: &SaveRecord, destination: &SaveRecord) -> ConflictC
 
 fn collect_backup_candidates(active_dir: &Path) -> Result<Vec<PathBuf>> {
     if !active_dir.exists() || !active_dir.is_dir() {
-        anyhow::bail!("active save directory does not exist: {}", active_dir.display());
+        anyhow::bail!(
+            "active save directory does not exist: {}",
+            active_dir.display()
+        );
     }
 
     let mut files = Vec::new();

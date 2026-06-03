@@ -67,9 +67,8 @@ pub fn walk_tree(root: &Path, max_depth: u32) -> Result<Vec<PathBuf>> {
         .max_depth(max_depth as usize)
         .follow_links(false)
     {
-        let entry = entry.with_context(|| {
-            format!("failed to read directory entry under {}", root.display())
-        })?;
+        let entry = entry
+            .with_context(|| format!("failed to read directory entry under {}", root.display()))?;
         paths.push(entry.into_path());
     }
     Ok(paths)

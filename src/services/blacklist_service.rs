@@ -40,11 +40,17 @@ pub fn add_ignored_path(raw_path: &str, name: Option<String>) -> Result<IgnoredE
 
     let normalized = normalize_path(&path);
 
-    let cleaned_name = name.map(|value| value.trim().to_string()).filter(|value| !value.is_empty());
+    let cleaned_name = name
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
 
     let mut registry = load_registry()?;
     let key = path_key(&normalized);
-    if let Some(existing) = registry.entries.iter_mut().find(|entry| path_key(&entry.path) == key) {
+    if let Some(existing) = registry
+        .entries
+        .iter_mut()
+        .find(|entry| path_key(&entry.path) == key)
+    {
         if cleaned_name.is_some() {
             existing.name = cleaned_name;
         }
@@ -69,7 +75,9 @@ pub fn remove_ignored_path(raw_path: &str) -> Result<()> {
     let key = path_key(&path);
     let mut registry = load_registry()?;
     let before = registry.entries.len();
-    registry.entries.retain(|entry| path_key(&entry.path) != key);
+    registry
+        .entries
+        .retain(|entry| path_key(&entry.path) != key);
     if registry.entries.len() == before {
         anyhow::bail!("ignored path was not found");
     }
@@ -129,10 +137,13 @@ pub fn paths_overlap(candidate: &Path, ignored: &Path) -> bool {
 }
 
 fn display_name(entry: &IgnoredEntry) -> String {
-    entry
-        .name
-        .clone()
-        .unwrap_or_else(|| entry.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| entry.path.display().to_string()))
+    entry.name.clone().unwrap_or_else(|| {
+        entry
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| entry.path.display().to_string())
+    })
 }
 
 fn path_key(path: &Path) -> String {
@@ -145,8 +156,12 @@ fn load_registry() -> Result<IgnoredRegistry> {
         return Ok(IgnoredRegistry::default());
     }
 
-    let raw = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read ignored games registry at {}", path.display()))?;
+    let raw = fs::read_to_string(&path).with_context(|| {
+        format!(
+            "failed to read ignored games registry at {}",
+            path.display()
+        )
+    })?;
     let registry = serde_json::from_str::<IgnoredRegistry>(&raw).with_context(|| {
         format!(
             "failed to parse ignored games registry JSON at {}",

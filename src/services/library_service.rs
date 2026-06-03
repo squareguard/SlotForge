@@ -18,9 +18,7 @@ struct ManualGameRegistry {
 
 pub fn list_manual_games() -> Result<Vec<GameRecord>> {
     let mut registry = load_registry()?;
-    registry
-        .games
-        .sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    registry.games.sort_by_key(|a| a.name.to_lowercase());
     Ok(registry.games)
 }
 
@@ -50,7 +48,7 @@ pub fn build_canonical_library(discovery: DiscoverySummary) -> Result<Vec<GameRe
     }
 
     let mut merged: Vec<GameRecord> = by_identity.into_values().collect();
-    merged.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    merged.sort_by_key(|a| a.name.to_lowercase());
     blacklist_service::filter_games(merged)
 }
 
@@ -106,7 +104,11 @@ pub fn remove_manual_game(game_id: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn edit_manual_game(game_id: &str, new_name: &str, new_raw_save_dir: &str) -> Result<GameRecord> {
+pub fn edit_manual_game(
+    game_id: &str,
+    new_name: &str,
+    new_raw_save_dir: &str,
+) -> Result<GameRecord> {
     let cleaned_name = new_name.trim();
     if cleaned_name.is_empty() {
         anyhow::bail!("manual game name cannot be empty");

@@ -157,7 +157,9 @@ fn scan_save_directory(args: ScanDirectoryArgs) -> ApiResponse<Vec<DiscoveredSav
 
 #[tauri::command]
 fn destructive_restore_warning(args: SnapshotIdArgs) -> ApiResponse<String> {
-    from_anyhow(slotforge::api::destructive_restore_warning(&args.snapshot_id))
+    from_anyhow(slotforge::api::destructive_restore_warning(
+        &args.snapshot_id,
+    ))
 }
 
 #[tauri::command]

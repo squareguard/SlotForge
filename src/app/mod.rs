@@ -10,6 +10,12 @@ pub struct AppShellState {
     pub sections: Vec<AppSection>,
 }
 
+impl Default for AppShellState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AppShellState {
     pub fn new() -> Self {
         Self {
@@ -47,8 +53,8 @@ pub fn run() -> anyhow::Result<()> {
         return Err(err);
     }
 
-    if let Err(audit_err) = crate::services::audit_service::record_event(
-        &crate::services::audit_service::AuditEvent {
+    if let Err(audit_err) =
+        crate::services::audit_service::record_event(&crate::services::audit_service::AuditEvent {
             timestamp: chrono::Utc::now(),
             action: crate::services::audit_service::AuditAction::AppStartup,
             outcome: crate::services::audit_service::AuditOutcome::Success,
@@ -56,8 +62,8 @@ pub fn run() -> anyhow::Result<()> {
             game_id: None,
             source_path: None,
             destination_path: None,
-        },
-    ) {
+        })
+    {
         warn!("audit log write failed: {audit_err:#}");
     }
 

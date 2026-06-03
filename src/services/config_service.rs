@@ -115,9 +115,9 @@ pub fn remove_scan_path(raw_path: &str) -> Result<AppConfig> {
     let mut config = ensure_initialized()?;
     let resolved = resolve_path(raw_path);
     let resolved_key = resolved.to_string_lossy().to_lowercase();
-    config.scan_paths.retain(|existing| {
-        existing.to_string_lossy().to_lowercase() != resolved_key
-    });
+    config
+        .scan_paths
+        .retain(|existing| existing.to_string_lossy().to_lowercase() != resolved_key);
     config.scan_paths = normalize_and_dedup_paths(config.scan_paths);
     save_to_path(&config_path(), &config)?;
     Ok(config)

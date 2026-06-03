@@ -122,16 +122,17 @@ pub fn execute_swap_transaction(request: &SwapTransactionRequest) -> Result<Swap
         ensure_preflight_ready(&preflight)?;
 
         let active_existing = if active_destination_path.exists() {
-            Some(read_active_save_record(&request.game, &active_destination_path)?)
+            Some(read_active_save_record(
+                &request.game,
+                &active_destination_path,
+            )?)
         } else {
             None
         };
 
         if let Some(active_record) = &active_existing {
             if !request.confirmed_destructive_action {
-                anyhow::bail!(
-                    "swap blocked: confirmation required before replacing active save"
-                );
+                anyhow::bail!("swap blocked: confirmation required before replacing active save");
             }
             let comparison = compare_for_swap(&request.selected_vault_save, active_record);
             let resolved_choice =
@@ -140,7 +141,10 @@ pub fn execute_swap_transaction(request: &SwapTransactionRequest) -> Result<Swap
         }
 
         let staged_active_backup_path = if active_existing.is_some() {
-            Some(stage_existing_active_save(&request.game, &active_destination_path)?)
+            Some(stage_existing_active_save(
+                &request.game,
+                &active_destination_path,
+            )?)
         } else {
             None
         };
@@ -187,7 +191,12 @@ pub fn execute_swap_transaction(request: &SwapTransactionRequest) -> Result<Swap
 
     match &outcome {
         Ok(_) => {
-            metrics_service::record_operation_best_effort(MetricOperation::Swap, true, false, false);
+            metrics_service::record_operation_best_effort(
+                MetricOperation::Swap,
+                true,
+                false,
+                false,
+            );
         }
         Err(err) => {
             metrics_service::record_operation_best_effort(
@@ -201,7 +210,10 @@ pub fn execute_swap_transaction(request: &SwapTransactionRequest) -> Result<Swap
     outcome
 }
 
-pub fn destructive_swap_warning(selected: &SaveRecord, existing_active: Option<&SaveRecord>) -> String {
+pub fn destructive_swap_warning(
+    selected: &SaveRecord,
+    existing_active: Option<&SaveRecord>,
+) -> String {
     if let Some(active) = existing_active {
         return format!(
             "Warning: swapping '{}' will replace active save '{}'. The active file is staged to vault first, but confirm before continuing.",
@@ -256,11 +268,17 @@ fn stage_existing_active_save(game: &GameRecord, active_path: &Path) -> Result<P
 }
 
 /// Undo a successful swap by restoring the staged active save (if any) and removing the restored file.
-pub fn rollback_user_swap(active_destination_path: &Path, staged_backup_path: Option<&Path>) -> Result<()> {
+pub fn rollback_user_swap(
+    active_destination_path: &Path,
+    staged_backup_path: Option<&Path>,
+) -> Result<()> {
     rollback_swap_failure(active_destination_path, staged_backup_path)
 }
 
-fn rollback_swap_failure(active_destination_path: &Path, staged_backup_path: Option<&Path>) -> Result<()> {
+fn rollback_swap_failure(
+    active_destination_path: &Path,
+    staged_backup_path: Option<&Path>,
+) -> Result<()> {
     if active_destination_path.exists() && active_destination_path.is_file() {
         fs::remove_file(active_destination_path).with_context(|| {
             format!(
@@ -338,7 +356,11 @@ fn read_active_save_record(game: &GameRecord, active_path: &Path) -> Result<Save
         .map(|value| value.to_string_lossy().to_string())
         .unwrap_or_else(|| "save.dat".to_string());
     Ok(SaveRecord {
-        id: format!("active:{}:{}", game.id, active_path.to_string_lossy().to_lowercase()),
+        id: format!(
+            "active:{}:{}",
+            game.id,
+            active_path.to_string_lossy().to_lowercase()
+        ),
         game_id: game.id.clone(),
         file_name,
         absolute_path: active_path.to_path_buf(),
@@ -368,7 +390,9 @@ fn compare_for_swap(source: &SaveRecord, destination: &SaveRecord) -> ConflictCo
     let reason = match freshness {
         SaveFreshness::Equal => "files appear equivalent by timestamp/hash".to_string(),
         SaveFreshness::SourceNewer => "selected vault save is newer than active save".to_string(),
-        SaveFreshness::DestinationNewer => "active save is newer than selected vault save".to_string(),
+        SaveFreshness::DestinationNewer => {
+            "active save is newer than selected vault save".to_string()
+        }
         SaveFreshness::Unknown => "unable to determine freshness confidently".to_string(),
     };
 
@@ -382,7 +406,10 @@ fn compare_for_swap(source: &SaveRecord, destination: &SaveRecord) -> ConflictCo
     }
 }
 
-fn apply_resolution_choice(choice: &ResolutionChoice, comparison: &ConflictComparison) -> Result<()> {
+fn apply_resolution_choice(
+    choice: &ResolutionChoice,
+    comparison: &ConflictComparison,
+) -> Result<()> {
     match (comparison.freshness.clone(), choice) {
         (SaveFreshness::DestinationNewer, ResolutionChoice::KeepDestination) => {
             anyhow::bail!("swap cancelled by resolution choice: keep destination")
@@ -409,11 +436,13 @@ fn resolve_conflict_choice(
     let choice = match policy {
         config_service::ConflictPolicy::PromptAlways => ResolutionChoice::CancelOperation,
         config_service::ConflictPolicy::KeepBothByDefault => ResolutionChoice::KeepBothRename,
-        config_service::ConflictPolicy::PreferNewerWithPromptOnEqual => match comparison.freshness {
-            SaveFreshness::SourceNewer => ResolutionChoice::KeepSource,
-            SaveFreshness::DestinationNewer => ResolutionChoice::KeepDestination,
-            SaveFreshness::Equal | SaveFreshness::Unknown => ResolutionChoice::CancelOperation,
-        },
+        config_service::ConflictPolicy::PreferNewerWithPromptOnEqual => {
+            match comparison.freshness {
+                SaveFreshness::SourceNewer => ResolutionChoice::KeepSource,
+                SaveFreshness::DestinationNewer => ResolutionChoice::KeepDestination,
+                SaveFreshness::Equal | SaveFreshness::Unknown => ResolutionChoice::CancelOperation,
+            }
+        }
     };
     Ok(choice)
 }
@@ -430,7 +459,8 @@ mod tests {
     use crate::services::config_service::{self, ConflictPolicy};
 
     use super::{
-        apply_resolution_choice, compare_for_swap, destructive_swap_warning, resolve_conflict_choice,
+        apply_resolution_choice, compare_for_swap, destructive_swap_warning,
+        resolve_conflict_choice,
     };
 
     #[test]
@@ -462,7 +492,12 @@ mod tests {
     fn policy_prefer_newer_prompts_on_equal() {
         let config_path = unique_temp_file("policy");
         // SAFETY: tests run in-process; this test scopes and cleans up env override.
-        unsafe { std::env::set_var("SLOTFORGE_CONFIG_PATH", config_path.to_string_lossy().to_string()) };
+        unsafe {
+            std::env::set_var(
+                "SLOTFORGE_CONFIG_PATH",
+                config_path.to_string_lossy().to_string(),
+            )
+        };
         config_service::set_conflict_policy(ConflictPolicy::PreferNewerWithPromptOnEqual)
             .expect("set policy");
 

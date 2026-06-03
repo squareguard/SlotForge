@@ -157,7 +157,9 @@ pub fn metadata_to_dto(metadata: &SaveMetadata) -> SaveMetadataDto {
 }
 
 pub fn label_color_for_id(id: &str) -> String {
-    let hash = id.bytes().fold(0u32, |acc, b| acc.wrapping_add(u32::from(b)));
+    let hash = id
+        .bytes()
+        .fold(0u32, |acc, b| acc.wrapping_add(u32::from(b)));
     LABEL_COLORS[(hash as usize) % LABEL_COLORS.len()].to_string()
 }
 
@@ -169,7 +171,11 @@ pub fn integrity_from_verified(verified: Option<bool>) -> IntegrityStatusDto {
     }
 }
 
-pub fn snapshot_to_dto(record: &SaveRecord, integrity: IntegrityStatusDto, files: Vec<String>) -> SnapshotDto {
+pub fn snapshot_to_dto(
+    record: &SaveRecord,
+    integrity: IntegrityStatusDto,
+    files: Vec<String>,
+) -> SnapshotDto {
     SnapshotDto {
         id: record.id.clone(),
         game_id: record.game_id.clone(),
@@ -194,14 +200,16 @@ pub fn path_to_string(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
-pub fn conflict_file_from_comparison(file_name: &str, comparison: &ConflictComparison) -> ConflictFileDto {
+pub fn conflict_file_from_comparison(
+    file_name: &str,
+    comparison: &ConflictComparison,
+) -> ConflictFileDto {
     ConflictFileDto {
         path: file_name.to_string(),
         freshness: comparison.freshness.clone(),
         active_snippet: format!(
             "ACTIVE  path={}  {}",
-            comparison.destination_path,
-            comparison.reason
+            comparison.destination_path, comparison.reason
         ),
         snapshot_snippet: format!(
             "VAULT   path={}  freshness={:?}",
@@ -235,7 +243,9 @@ pub fn discovered_to_relative_paths(files: &[DiscoveredSaveFile]) -> Vec<String>
     files.iter().map(|f| f.relative_path.clone()).collect()
 }
 
-pub fn ignored_entry_to_dto(entry: &crate::services::blacklist_service::IgnoredEntry) -> IgnoredEntryDto {
+pub fn ignored_entry_to_dto(
+    entry: &crate::services::blacklist_service::IgnoredEntry,
+) -> IgnoredEntryDto {
     IgnoredEntryDto {
         path: path_to_string(&entry.path),
         name: entry.name.clone(),

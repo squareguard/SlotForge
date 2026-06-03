@@ -1,27 +1,27 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
-use chrono::Utc;
 use crate::api::dto::{
     self, AddGameResultDto, BackupResultDto, IgnoreGameResultDto, IgnoredListDto,
     IntegrityStatusDto, LibraryStateDto, RestoreResultDto, SnapshotDto, SnapshotResultDto,
     VerifyAllResultDto,
 };
 use crate::api::library_cache;
-use crate::services::discovery_service::DiscoverySummary;
 use crate::api::swap_session::{self, LastSwapSession};
 use crate::domain::conflict::ResolutionChoice;
 use crate::domain::game::GameRecord;
 use crate::domain::save::{SaveOrigin, SaveRecord};
 use crate::services::blacklist_service;
 use crate::services::config_service;
+use crate::services::discovery_service::DiscoverySummary;
 use crate::services::discovery_service::{self, DiscoveredSaveFile};
 use crate::services::library_service;
 use crate::services::metadata_service;
 use crate::services::swap_service::{self, SwapTransactionRequest};
 use crate::services::vault_service::{self, DeleteRequest, DeleteTarget};
 use crate::ui::screens::library_screen::{self, LibraryFilters};
+use anyhow::{Context, Result};
+use chrono::Utc;
 
 static VERIFIED_IDS: std::sync::Mutex<Option<HashMap<String, bool>>> = std::sync::Mutex::new(None);
 
@@ -115,7 +115,11 @@ pub fn add_game(name: &str, active_save_dir: &str) -> Result<AddGameResultDto> {
     })
 }
 
-pub fn backup_game(game_id: &str, label: Option<String>, note: Option<String>) -> Result<BackupResultDto> {
+pub fn backup_game(
+    game_id: &str,
+    label: Option<String>,
+    note: Option<String>,
+) -> Result<BackupResultDto> {
     let game_id = require_non_empty_id(game_id, "Game id")?;
     let game = find_game(game_id)?;
     let records = vault_service::backup_active_saves_for_game(&game)?;
@@ -406,11 +410,7 @@ fn build_snapshots_for_game(game: &GameRecord) -> Result<Vec<SnapshotDto>> {
         snapshots.push(dto::snapshot_to_dto(&record, integrity, files));
     }
 
-    snapshots.sort_by(|a, b| {
-        b.metadata
-            .modified_at
-            .cmp(&a.metadata.modified_at)
-    });
+    snapshots.sort_by(|a, b| b.metadata.modified_at.cmp(&a.metadata.modified_at));
     Ok(snapshots)
 }
 
@@ -526,10 +526,7 @@ fn snapshot_record_from_dto(game: &GameRecord, snapshot: &SnapshotDto) -> Result
             byte_size: snapshot.metadata.byte_size,
             sha256: snapshot.metadata.sha256.clone(),
         },
-        archived_at: snapshot
-            .archived_at
-            .as_deref()
-            .and_then(|s| s.parse().ok()),
+        archived_at: snapshot.archived_at.as_deref().and_then(|s| s.parse().ok()),
     })
 }
 
@@ -539,7 +536,11 @@ fn read_active_record(game: &GameRecord, active_path: &Path) -> Result<SaveRecor
         .map(|v| v.to_string_lossy().to_string())
         .unwrap_or_else(|| "save.dat".to_string());
     Ok(SaveRecord {
-        id: format!("active:{}:{}", game.id, active_path.to_string_lossy().to_lowercase()),
+        id: format!(
+            "active:{}:{}",
+            game.id,
+            active_path.to_string_lossy().to_lowercase()
+        ),
         game_id: game.id.clone(),
         file_name,
         absolute_path: active_path.to_path_buf(),

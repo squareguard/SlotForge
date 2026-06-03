@@ -43,7 +43,11 @@ pub fn inspect_save(game: &GameRecord, save_id: &str) -> Result<SaveRecord> {
         .with_context(|| format!("save '{save_id}' not found in vault"))
 }
 
-pub fn compare_saves(game: &GameRecord, source_id: &str, destination_id: &str) -> Result<ConflictComparison> {
+pub fn compare_saves(
+    game: &GameRecord,
+    source_id: &str,
+    destination_id: &str,
+) -> Result<ConflictComparison> {
     let source = inspect_save(game, source_id)?;
     let destination = inspect_save(game, destination_id)?;
     Ok(vault_service::compare_saves(&source, &destination))

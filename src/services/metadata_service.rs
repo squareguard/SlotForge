@@ -10,8 +10,8 @@ use sha2::{Digest, Sha256};
 use crate::domain::save::SaveMetadata;
 
 pub fn collect_metadata(path: &Path) -> Result<SaveMetadata> {
-    let file_metadata =
-        fs::metadata(path).with_context(|| format!("failed to read metadata {}", path.display()))?;
+    let file_metadata = fs::metadata(path)
+        .with_context(|| format!("failed to read metadata {}", path.display()))?;
     let sha256 = compute_sha256(path)?;
 
     Ok(SaveMetadata {
