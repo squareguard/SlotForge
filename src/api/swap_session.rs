@@ -49,7 +49,8 @@ pub fn save_last_swap(session: &LastSwapSession) -> Result<()> {
             )
         })?;
     }
-    let raw = serde_json::to_string_pretty(session).context("failed to serialize last swap session")?;
+    let raw =
+        serde_json::to_string_pretty(session).context("failed to serialize last swap session")?;
     fs::write(&path, raw)
         .with_context(|| format!("failed to write last swap session at {}", path.display()))?;
     Ok(())
@@ -72,7 +73,12 @@ pub fn session_to_dto(session: &LastSwapSession) -> crate::api::dto::LastSwapDto
             .staged_active_backup_path
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|| session.active_destination_path.to_string_lossy().to_string()),
+            .unwrap_or_else(|| {
+                session
+                    .active_destination_path
+                    .to_string_lossy()
+                    .to_string()
+            }),
         restored_at: session.restored_at.to_rfc3339(),
     }
 }

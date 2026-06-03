@@ -125,22 +125,33 @@ pub fn record_operation_best_effort(
     user_error: bool,
     recovered_after_failure: bool,
 ) {
-    if let Err(err) = record_operation(
-        operation,
-        success,
-        user_error,
-        recovered_after_failure,
-    ) {
+    if let Err(err) = record_operation(operation, success, user_error, recovered_after_failure) {
         warn!("failed to record metrics for {operation:?}: {err:#}");
     }
 }
 
 pub fn read_snapshot() -> Result<MetricsSnapshot> {
     let registry = load_registry()?;
-    let total_attempts = registry.operations.values().map(|c| c.attempts).sum::<u64>();
-    let total_successes = registry.operations.values().map(|c| c.successes).sum::<u64>();
-    let total_failures = registry.operations.values().map(|c| c.failures).sum::<u64>();
-    let total_user_errors = registry.operations.values().map(|c| c.user_errors).sum::<u64>();
+    let total_attempts = registry
+        .operations
+        .values()
+        .map(|c| c.attempts)
+        .sum::<u64>();
+    let total_successes = registry
+        .operations
+        .values()
+        .map(|c| c.successes)
+        .sum::<u64>();
+    let total_failures = registry
+        .operations
+        .values()
+        .map(|c| c.failures)
+        .sum::<u64>();
+    let total_user_errors = registry
+        .operations
+        .values()
+        .map(|c| c.user_errors)
+        .sum::<u64>();
     let total_recovered_failures = registry
         .operations
         .values()
@@ -240,10 +251,25 @@ fn save_registry(registry: &MetricsRegistry) -> Result<()> {
 
 fn metrics_registry_path() -> PathBuf {
     let config_path = config_service::config_path();
-    if let Some(parent) = config_path.parent() {
+    let parent = config_path
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    // Standard layout: %APPDATA%/slotforge/config.json → metrics.json alongside it.
+    if config_path
+        .file_name()
+        .is_some_and(|name| name == "config.json")
+    {
         return parent.join("metrics.json");
     }
-    PathBuf::from("slotforge-metrics.json")
+
+    // Custom or per-test config paths get their own metrics file (avoids sharing temp/metrics.json).
+    let stem = config_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("slotforge");
+    parent.join(format!("{stem}.metrics.json"))
 }
 
 fn rate(numerator: u64, denominator: u64) -> f64 {
@@ -274,25 +300,23 @@ mod tests {
     #[test]
     fn computes_expected_success_and_failure_rates() {
         let config_path = unique_temp_file("metrics-config");
-        // SAFETY: scoped, test-only env var override with cleanup at the end.
-        unsafe { std::env::set_var("SLOTFORGE_CONFIG_PATH", config_path.to_string_lossy().to_string()) };
+        crate::test_support::with_config_path(&config_path, || {
+            let metrics_path = super::metrics_registry_path();
+            let _ = fs::remove_file(&metrics_path);
 
-        record_operation(MetricOperation::Backup, true, false, false).expect("record backup");
-        record_operation(MetricOperation::Swap, false, true, true).expect("record failed swap");
-        record_operation(MetricOperation::Swap, true, false, false).expect("record successful swap");
+            record_operation(MetricOperation::Backup, true, false, false).expect("record backup");
+            record_operation(MetricOperation::Swap, false, true, true).expect("record failed swap");
+            record_operation(MetricOperation::Swap, true, false, false)
+                .expect("record successful swap");
 
-        let snapshot = read_snapshot().expect("read snapshot");
-        assert!((snapshot.operation_success_rate - (2.0 / 3.0)).abs() < f64::EPSILON);
-        assert!((snapshot.swap_failure_rate - 0.5).abs() < f64::EPSILON);
-        assert!((snapshot.user_error_recoverability_rate - 1.0).abs() < f64::EPSILON);
+            let snapshot = read_snapshot().expect("read snapshot");
+            assert!((snapshot.operation_success_rate - (2.0 / 3.0)).abs() < f64::EPSILON);
+            assert!((snapshot.swap_failure_rate - 0.5).abs() < f64::EPSILON);
+            assert!((snapshot.user_error_recoverability_rate - 1.0).abs() < f64::EPSILON);
 
-        let metrics_path = config_path
-            .parent()
-            .expect("temp config path should have a parent directory")
-            .join("metrics.json");
-        let _ = fs::remove_file(metrics_path);
-        let _ = fs::remove_file(config_path);
-        unsafe { std::env::remove_var("SLOTFORGE_CONFIG_PATH") };
+            let _ = fs::remove_file(metrics_path);
+            let _ = fs::remove_file(&config_path);
+        });
     }
 
     #[test]
@@ -315,9 +339,13 @@ mod tests {
 
     #[test]
     fn identifies_user_safety_and_confirmation_errors() {
-        assert!(is_likely_user_error("swap blocked: confirmation required before replacing active save"));
+        assert!(is_likely_user_error(
+            "swap blocked: confirmation required before replacing active save"
+        ));
         assert!(is_likely_user_error("swap cancelled by user choice"));
-        assert!(!is_likely_user_error("failed to copy selected save into active location"));
+        assert!(!is_likely_user_error(
+            "failed to copy selected save into active location"
+        ));
     }
 
     fn unique_temp_file(prefix: &str) -> std::path::PathBuf {

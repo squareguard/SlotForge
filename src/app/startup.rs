@@ -11,10 +11,8 @@ use crate::services::discovery_service;
 use crate::services::metrics_service::{self, MvpSuccessCriteria};
 use crate::services::swap_service::{self, SwapPreflightRequest};
 use crate::ui::navigation::AppSection;
-use crate::ui::screens::{
-    about_screen, library_screen, settings_screen, vault_screen,
-};
 use crate::ui::screens::library_screen::{LibraryFilters, SortMode};
+use crate::ui::screens::{about_screen, library_screen, settings_screen, vault_screen};
 
 pub fn run_startup_report(shell: &mut AppShellState) -> Result<()> {
     let about = about_screen::about_info();
@@ -44,7 +42,7 @@ pub fn run_startup_report(shell: &mut AppShellState) -> Result<()> {
         })?;
     }
     println!();
-    println!("[{}]", "Library");
+    println!("[Library]");
     println!(
         "  Games in library: {} ({} from default locations)",
         library.items.len(),
@@ -65,12 +63,12 @@ pub fn run_startup_report(shell: &mut AppShellState) -> Result<()> {
         println!("  Game: {}", vault.game_name);
         println!("  Vaulted saves: {}", vault.saves.len());
         if vault.saves.len() >= 2 {
-            let comparison = vault_screen::compare_saves(
-                game,
-                &vault.saves[0].id,
-                &vault.saves[1].id,
-            )?;
-            println!("  Compare sample: {:?} — {}", comparison.freshness, comparison.reason);
+            let comparison =
+                vault_screen::compare_saves(game, &vault.saves[0].id, &vault.saves[1].id)?;
+            println!(
+                "  Compare sample: {:?} — {}",
+                comparison.freshness, comparison.reason
+            );
         }
         log_swap_readiness(game, vault.saves.first())?;
     } else {
@@ -181,7 +179,10 @@ pub fn run_self_test() -> Result<()> {
     fs::create_dir_all(&vault_root)?;
     // SAFETY: self-test only (SLOTFORGE_SELF_TEST=1); redirects config to an isolated temp file.
     unsafe {
-        std::env::set_var("SLOTFORGE_CONFIG_PATH", config_path.to_string_lossy().to_string());
+        std::env::set_var(
+            "SLOTFORGE_CONFIG_PATH",
+            config_path.to_string_lossy().to_string(),
+        );
     }
 
     let config = crate::services::config_service::ensure_initialized()?;
@@ -190,8 +191,11 @@ pub fn run_self_test() -> Result<()> {
     let _ = config;
 
     let filters = LibraryFilters::default();
-    let added =
-        library_screen::add_manual_game_action("Self Test Game", game_dir.to_string_lossy().as_ref(), filters.clone())?;
+    let added = library_screen::add_manual_game_action(
+        "Self Test Game",
+        game_dir.to_string_lossy().as_ref(),
+        filters.clone(),
+    )?;
     let game = added
         .items
         .iter()
@@ -228,7 +232,10 @@ pub fn run_self_test() -> Result<()> {
     crate::services::library_service::remove_manual_game(&game.id)?;
 
     if let Err(err) = fs::remove_dir_all(&temp_root) {
-        eprintln!("self-test: failed to remove temp dir {}: {err}", temp_root.display());
+        eprintln!(
+            "self-test: failed to remove temp dir {}: {err}",
+            temp_root.display()
+        );
     }
     unsafe {
         std::env::remove_var("SLOTFORGE_CONFIG_PATH");

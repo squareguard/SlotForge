@@ -1,0 +1,79 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve SlotForge. Please search [existing issues](https://github.com/squareguard/SlotForge/issues) first.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Area
+      options:
+        - Desktop app (Tauri + React)
+        - Rust CLI
+        - Vault / backup
+        - Hot swap / restore
+        - Game discovery / library
+        - Settings / config
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Clear description of the bug and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Install / run ...
+        2. Add game ...
+        3. Backup / swap ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: SlotForge version or commit
+      placeholder: e.g. 0.1.0 or abc1234
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - Linux
+        - macOS
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Rust version (`rustc -V`), Node version (`node -v`), and anything else relevant.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Redact paths or game names if needed. Audit log is next to config (see README).
+    validations:
+      required: false

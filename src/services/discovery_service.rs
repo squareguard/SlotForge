@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
-use chrono::Utc;
-use serde::{Deserialize, Serialize};
 use crate::domain::game::{GameRecord, GameSource};
 use crate::platform::fs::{normalize_and_dedup_paths, walk_tree};
 use crate::platform::path_defaults::default_scan_paths;
 use crate::services::blacklist_service;
 use crate::services::config_service;
+use anyhow::Result;
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiscoverySummary {
@@ -58,7 +58,7 @@ pub fn discover_games_from_roots(roots: &[PathBuf]) -> Result<DiscoverySummary> 
     }
 
     let mut discovered_games: Vec<GameRecord> = discovered.into_values().collect();
-    discovered_games.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    discovered_games.sort_by_key(|a| a.name.to_lowercase());
 
     Ok(DiscoverySummary {
         scanned_roots: normalized_roots,
@@ -91,10 +91,7 @@ fn is_save_slot_directory_name(name: &str) -> bool {
 
 /// Walk up from a save's parent folder to the game root (e.g. `.../Cyberpunk 2077`, not `AutoSave-1`).
 fn canonical_game_root(mut dir: PathBuf, scan_root: &Path) -> PathBuf {
-    loop {
-        let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
-            break;
-        };
+    while let Some(name) = dir.file_name().and_then(|n| n.to_str()) {
         if !is_save_slot_directory_name(name) {
             break;
         }
@@ -127,7 +124,9 @@ fn collect_candidate_game_dirs(root: &Path) -> Result<Vec<PathBuf>> {
         game_roots.entry(key).or_insert(game_root);
     }
 
-    Ok(normalize_and_dedup_paths(game_roots.into_values().collect()))
+    Ok(normalize_and_dedup_paths(
+        game_roots.into_values().collect(),
+    ))
 }
 
 /// Save-like file discovered under a user-selected directory (for add-game / rescan UI).

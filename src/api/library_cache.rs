@@ -42,7 +42,8 @@ pub fn save(library: &LibraryStateDto) -> Result<()> {
         },
     };
 
-    let json = serde_json::to_string_pretty(&payload).context("failed to serialize library cache")?;
+    let json =
+        serde_json::to_string_pretty(&payload).context("failed to serialize library cache")?;
     fs::write(&path, json)
         .with_context(|| format!("failed to write library cache at {}", path.display()))?;
     Ok(())
@@ -56,12 +57,8 @@ pub fn load() -> Result<Option<LibraryStateDto>> {
 
     let raw = fs::read_to_string(&path)
         .with_context(|| format!("failed to read library cache at {}", path.display()))?;
-    let cached = serde_json::from_str::<PersistedLibraryCache>(&raw).with_context(|| {
-        format!(
-            "failed to parse library cache JSON at {}",
-            path.display()
-        )
-    })?;
+    let cached = serde_json::from_str::<PersistedLibraryCache>(&raw)
+        .with_context(|| format!("failed to parse library cache JSON at {}", path.display()))?;
 
     if cached.version != CACHE_VERSION {
         return Ok(None);

@@ -44,13 +44,18 @@ pub fn load_state(filters: LibraryFilters) -> Result<LibraryScreenState> {
         items,
         filters,
         status_message: None,
-        empty_state_hint: "No games found yet. Add a game folder or update scan locations in Settings.",
+        empty_state_hint:
+            "No games found yet. Add a game folder or update scan locations in Settings.",
         primary_action_label: "Add Game Folder",
         help_text: "Tip: Use a clear game name so saves are easy to identify later.",
     })
 }
 
-pub fn add_manual_game_action(name: &str, save_dir: &str, filters: LibraryFilters) -> Result<LibraryScreenState> {
+pub fn add_manual_game_action(
+    name: &str,
+    save_dir: &str,
+    filters: LibraryFilters,
+) -> Result<LibraryScreenState> {
     library_service::add_manual_game(name, save_dir)?;
     let mut state = load_state(filters)?;
     state.status_message = Some("Game added. You can now back up and label its saves.".to_string());
@@ -74,7 +79,11 @@ fn apply_filters(mut games: Vec<GameRecord>, filters: &LibraryFilters) -> Vec<Ga
         let needle = query.to_lowercase();
         games.retain(|game| {
             game.name.to_lowercase().contains(&needle)
-                || game.active_save_dir.to_string_lossy().to_lowercase().contains(&needle)
+                || game
+                    .active_save_dir
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .contains(&needle)
         });
     }
 
@@ -84,13 +93,13 @@ fn apply_filters(mut games: Vec<GameRecord>, filters: &LibraryFilters) -> Vec<Ga
 
     match filters.sort_mode {
         SortMode::NameAsc => {
-            games.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+            games.sort_by_key(|a| a.name.to_lowercase());
         }
         SortMode::NameDesc => {
-            games.sort_by(|a, b| b.name.to_lowercase().cmp(&a.name.to_lowercase()));
+            games.sort_by_key(|b| std::cmp::Reverse(b.name.to_lowercase()));
         }
         SortMode::UpdatedNewestFirst => {
-            games.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+            games.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
         }
     }
 
