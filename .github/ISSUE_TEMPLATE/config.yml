@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/squareguard/SlotForge/security/advisories/new
+    about: Report security issues privately (do not use public issues).
+  - name: Contributing guide
+    url: https://github.com/squareguard/SlotForge/blob/main/CONTRIBUTING.md
+    about: Setup, PR guidelines, and code of conduct.

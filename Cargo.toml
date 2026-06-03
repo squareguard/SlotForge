@@ -8,6 +8,11 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 description = "Cross-platform save manager for PC games."
+repository = "https://github.com/squareguard/SlotForge"
+homepage = "https://github.com/squareguard/SlotForge"
+readme = "README.md"
+keywords = ["games", "saves", "backup", "tauri", "desktop"]
+categories = ["filesystem", "command-line-utilities"]
 
 [lib]
 name = "slotforge"
