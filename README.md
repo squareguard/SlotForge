@@ -35,7 +35,7 @@ npm install
 npm run tauri:dev
 ```
 
-That opens the desktop app with the real backend — not a mocked UI.
+The desktop app should then open.
 
 Release build:
 
