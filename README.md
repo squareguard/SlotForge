@@ -5,6 +5,10 @@
 
 Desktop app for backing up PC game saves, swapping between versions, and keeping everything in one vault on your machine. No cloud, no accounts.
 
+```
+Warning: This project is still in the Pre-Release phase. Please be aware that by using this software in it's current state, you may corrupt and/or lose save files. Please make your own backups. (Yes, I get that defeats the point of it, but it's new software that hasn't been heavily tested by many people yet. Just wanted to warn you...)
+```
+
 ![SlotForge vault view](public/images/1.png)
 
 ## More screenshots
