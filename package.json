@@ -9,6 +9,6 @@
     "tauri:build": "node scripts/run-tauri.mjs build"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.5.0"
+    "@tauri-apps/cli": "2.11.3"
   }
 }
