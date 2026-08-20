@@ -1,9 +1,17 @@
-# SlotForge
+<p align="center">
+    <img src="icon.png" alt="Icon" width="64"/>
+</p>
+
+<h3 align="center">
+   SlotForge
+</h3>
+
+<p align="center">
+   Desktop app for backing up PC game saves, swapping between versions, and keeping everything in one vault on your machine. No cloud, no accounts.
+</p>
 
 [![CI](https://github.com/squareguard/SlotForge/actions/workflows/cross-platform-tests.yml/badge.svg)](https://github.com/squareguard/SlotForge/actions/workflows/cross-platform-tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-
-Desktop app for backing up PC game saves, swapping between versions, and keeping everything in one vault on your machine. No cloud, no accounts.
 
 ```
 Warning: This project is still in the Pre-Release phase. Please be aware that by using this software in it's current state, you may corrupt and/or lose save files. Please make your own backups. (Yes, I get that defeats the point of it, but it's new software that hasn't been heavily tested by many people yet. Just wanted to warn you...)
